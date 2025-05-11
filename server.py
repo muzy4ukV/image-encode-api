@@ -1,14 +1,18 @@
 import uvicorn
-from fastapi import UploadFile, File, Depends, HTTPException
+from fastapi import UploadFile, File, Depends, HTTPException, Form
 from fastapi.responses import StreamingResponse
 from fastapi import FastAPI
 from PIL import Image
 import io
 import numpy as np
 import cv2
+from pydantic import BaseModel
+from starlette.responses import FileResponse
+
 from encoder import Encoder
 
 app = FastAPI()
+encoder = Encoder()
 
 def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
@@ -43,7 +47,6 @@ async def upload_file(file: UploadFile = Depends(validate_image_file)):
 
     # Обробка
     try:
-        encoder = Encoder()
         encoded_image = encoder.encode(image)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Encoding failed: {str(e)}")
@@ -54,7 +57,41 @@ async def upload_file(file: UploadFile = Depends(validate_image_file)):
         headers={"Content-Disposition": f'attachment; filename="{file.filename.split('.')[0]}.bin"'},
     )
 
-@app.get("/health")
+class ImageSize(BaseModel):
+    width: int
+    height: int
+
+@app.post("/decode-image/")
+async def decode_image(
+        compressed_img: UploadFile = File(...),
+        width: int = Form(...),
+        height: int = Form(...)
+):
+    try:
+        #width, height = img_size.width, img_size.height
+        compressed_img = await compressed_img.read()
+
+        # Декодуємо отримані дані
+        decoded_image = encoder.decode(compressed_img, (int(width), int(height)))
+
+        # Конвертуємо отримане зображення в формат, який можна відправити як відповідь
+        _, buffer = cv2.imencode('.png', decoded_image)
+        image_bytes = buffer.tobytes()
+
+        image_io = io.BytesIO(image_bytes)
+        image_io.seek(0)
+
+        # Повертаємо як стрімінгову відповідь
+        return StreamingResponse(
+            image_io,
+            media_type="image/png",
+            headers={"Content-Disposition": "inline; filename=decoded_image.png"}
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Decoding failed: {str(e)}")
+
+@app.get("/health/")
 def health():
     return {"status": "healthy"}
 
@@ -63,4 +100,4 @@ async def root():
     return {"message": "Hello World"}
 
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8080)
