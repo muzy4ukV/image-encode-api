@@ -2,17 +2,15 @@ import uvicorn
 from fastapi import UploadFile, File, Depends, HTTPException, Form
 from fastapi.responses import StreamingResponse
 from fastapi import FastAPI
-from PIL import Image
 import io
 import numpy as np
 import cv2
 from pydantic import BaseModel
-from starlette.responses import FileResponse
-
 from encoder import Encoder
 
 app = FastAPI()
 encoder = Encoder()
+
 
 def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
@@ -23,25 +21,43 @@ def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
         raise HTTPException(status_code=400, detail="Invalid MIME type")
     return file
 
-@app.post("/encode-image/")
-async def upload_file(file: UploadFile = Depends(validate_image_file)):
-    file_bytes = await file.read()
 
-    # Перевірка, чи це справді зображення
-    try:
-        image = Image.open(io.BytesIO(file_bytes))
-        image.verify()  # Перевіряє, чи файл дійсно є зображенням
-    except Exception:
-        raise HTTPException(status_code=400, detail="Corrupted or invalid image file")
-
+def validate_and_convert_to_nparray(file_bytes: bytes) -> np.ndarray:
     image_array = np.frombuffer(file_bytes, dtype=np.uint8)
 
     image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
     if image is None:
-        raise HTTPException(status_code=400, detail="Failed to decode image")
+        raise HTTPException(status_code=400, detail="Corrupted or invalid image file")
 
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+
+@app.post("/add-fragments/")
+async def add_fragments(file: UploadFile = Depends(validate_image_file)):
+    file_bytes = await file.read()
+
+    # Validate and load image
+    np_image = validate_and_convert_to_nparray(file_bytes)
+
+    print("Image received successfully")
+
+    operation_result = encoder.add_fragments_from_img(np_image)
+
+    if operation_result:
+        return {
+            "status": "Successfully added fragments into base",
+            "db_fragments_count": encoder.get_db_size()
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to add fragments into base")
+
+
+@app.post("/encode-image/")
+async def upload_file(file: UploadFile = Depends(validate_image_file)):
+    file_bytes = await file.read()
+
+    image = validate_and_convert_to_nparray(file_bytes)
 
     print("Image received successfully")
 
@@ -61,6 +77,7 @@ class ImageSize(BaseModel):
     width: int
     height: int
 
+
 @app.post("/decode-image/")
 async def decode_image(
         compressed_img: UploadFile = File(...),
@@ -68,14 +85,16 @@ async def decode_image(
         height: int = Form(...)
 ):
     try:
-        #width, height = img_size.width, img_size.height
+        # width, height = img_size.width, img_size.height
         compressed_img = await compressed_img.read()
 
         # Декодуємо отримані дані
         decoded_image = encoder.decode(compressed_img, (int(width), int(height)))
 
         # Конвертуємо отримане зображення в формат, який можна відправити як відповідь
+        decoded_image = cv2.cvtColor(decoded_image, cv2.COLOR_RGB2BGR)
         _, buffer = cv2.imencode('.png', decoded_image)
+
         image_bytes = buffer.tobytes()
 
         image_io = io.BytesIO(image_bytes)
@@ -91,13 +110,16 @@ async def decode_image(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Decoding failed: {str(e)}")
 
+
 @app.get("/health/")
 def health():
     return {"status": "healthy"}
 
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
 
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8080)

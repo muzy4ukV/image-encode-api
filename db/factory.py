@@ -1,4 +1,5 @@
 from .base import BaseDB
+from .bigquery_db import BigQueryDB
 from .file_db import FileDB
 from .mongo_db import MongoDB
 
@@ -8,6 +9,8 @@ class DBFactory:
             self.db = FileDB()
         elif db_type == 'mongo':
             self.db = MongoDB()
+        elif db_type == 'bigquery':
+            self.db = BigQueryDB()
         else:
             raise Exception("Invalid database type")
 

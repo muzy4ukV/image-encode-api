@@ -22,9 +22,9 @@ else:
 
 class Encoder:
     def __init__(self):
-        self.db_type = 'file'
+        self.db_type = 'bigquery'
         self.db = DBFactory(self.db_type).get_db()
-        self.similarity_threshold = 0.5
+        self.similarity_threshold = 0.9
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
         self.kernel_size = 16
         self.step_size = 8
@@ -57,6 +57,21 @@ class Encoder:
                 self.db.save_results(path_to_save=f"fragments_base/frag_count_{checkpoints[check_index]}.npy")
                 check_index += 1
 
+    def get_db_size(self):
+        return len(self.db.fragments)
+
+    def add_fragments_from_img(self, img: np.array):
+        start_time = time()
+        fragments = self.split_image_into_fragments(img, self.kernel_size, self.step_size)
+        prep_fragments = self.prepare_fragments(fragments)
+        print(f'Fragments count: {len(fragments)}')
+
+        for fragment in prep_fragments:
+            self.db.add_fragment(fragment)
+
+        print(f"Image fragments adding time: {time() - start_time}")
+
+        return True
 
     def encode(self, img: np.array) -> bytes:
         start_time = time()
