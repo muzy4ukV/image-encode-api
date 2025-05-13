@@ -52,7 +52,6 @@ class Encoder:
                 check_index += 1
 
     def add_fragments_from_img(self, img: np.array):
-        start_time = time()
         fragments = self.split_image_into_fragments(img, self.kernel_size, self.step_size)
         prep_fragments = self.prepare_fragments(fragments)
         print(f'Fragments count: {len(fragments)}')
@@ -319,6 +318,9 @@ class Encoder:
 
         return reconstructed_image
 
+
+    def set_similarity_threshold(self, threshold: float):
+        self.similarity_threshold = threshold
 
     def get_ssim(self, original_img: np.array, decoded_img: np.array) -> float:
         """

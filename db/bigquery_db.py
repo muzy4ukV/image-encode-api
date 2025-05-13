@@ -8,9 +8,10 @@ import os
 import pandas as pd
 from typing import Optional
 from fragment import Fragment
+from .bucket_utils import GCSBucketUtils
 
 
-class BigQueryDB():
+class BigQueryDB:
     def __init__(self):
         super().__init__()
         # Завантажуємо облікові дані
@@ -23,25 +24,22 @@ class BigQueryDB():
         self.dataset_id = os.environ['GCP_DATASET_ID']
         self.table_id = os.environ['GCP_TABLE_ID']
         self.target_table = self.client.get_table(f"{self.project_id}.{self.dataset_id}.{self.table_id}")
-        self.bucket = GCSBucketUtils()
-        self.label_generator = None
         self.fragments = {}
-        self.build_tree()
+        self.prepare_fragments()
+        self.buffer_fragments_ids = []
 
 
     def is_empty(self):
         return len(self.fragments) == 0
 
-    @timing("Time building tree")
-    def build_tree(self):
+    @timing("Time preparing fragments")
+    def prepare_fragments(self):
         query = f"SELECT * FROM `{self.project_id}.{self.dataset_id}.{self.table_id}`"
         features_df = self.client.query(query).to_dataframe()
 
         if features_df.empty:
             print("No features found in DB.")
             return
-
-        features_dims = np.frombuffer(features_df.iloc[0]['features'], dtype=np.float32).shape[0]
 
         for i, row in features_df.iterrows():
             fragment_doc = {
@@ -50,12 +48,17 @@ class BigQueryDB():
             }
             self.fragments[i] = fragment_doc
 
-        self.tree = AnnoyIndex(features_dims, 'angular')
+        self.build_tree()
+
+    def build_tree(self):
+        features_dims = self.fragments[0]['feature'].shape[0]
+        self.tree = AnnoyIndex(features_dims, 'euclidean')
         for i, fragment in self.fragments.items():
             self.tree.add_item(i, fragment['feature'])
 
-        self.tree.build(100, n_jobs=-1)
-
+        n_trees = min(100, max(10, int(np.log2(len(self.fragments))) * 5))
+        self.tree.build(n_trees, n_jobs=-1)
+        print("Tree was built")
 
     def add_fragments(self, fragments: list[Fragment]) -> Optional[str]:
         rows = []
@@ -84,7 +87,30 @@ class BigQueryDB():
         }
         fragment_id = len(self.fragments)
         self.fragments[fragment_id] = fragment_elem
+        self.buffer_fragments_ids.append(fragment_id)
         return fragment_id
+
+    @timing("Time updating fragments")
+    def update_fragments(self):
+        if len(self.buffer_fragments_ids) == 0:
+            return
+        else:
+            fragment_to_add = []
+            for fragment_id in self.buffer_fragments_ids:
+                fragment = self.fragments[fragment_id]
+                fragment_to_add.append({
+                    "image": base64.b64encode(fragment['image'].tobytes()).decode('utf-8'),
+                    "features": fragment['feature'].tobytes()
+                })
+            fragments_df = pd.DataFrame(fragment_to_add)
+            try:
+                job = self.client.load_table_from_dataframe(fragments_df, self.target_table)
+                job.result()
+                print("Updated fragments loaded successfully")
+                self.buffer_fragments_ids = []
+            except Exception as e:
+                print(f"Error occurred while adding fragments to BigQuery: {e}")
+            self.build_tree()
 
     def get_db_size(self):
         return len(self.fragments)

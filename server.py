@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import UploadFile, File, Depends, HTTPException, Form, Request
+from fastapi import UploadFile, File, Depends, HTTPException, Form, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi import FastAPI
 import io
@@ -7,12 +7,13 @@ import numpy as np
 import cv2
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
 load_dotenv()
 from contextlib import asynccontextmanager
 import tensorflow as tf
 
-
 from encoder import Encoder
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,10 +27,13 @@ async def lifespan(app: FastAPI):
 
     yield  # ⬅ Після цього FastAPI починає обробляти HTTP-запити
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 def get_encoder(request: Request) -> Encoder:
     return request.app.state.encoder
+
 
 def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
@@ -53,7 +57,9 @@ def validate_and_convert_to_nparray(file_bytes: bytes) -> np.ndarray:
 
 
 @app.post("/add-fragments/")
-async def add_fragments(file: UploadFile = Depends(validate_image_file), encoder: Encoder = Depends(get_encoder)):
+async def add_fragments(file: UploadFile = Depends(validate_image_file),
+                        encoder: Encoder = Depends(get_encoder),
+                        background_tasks: BackgroundTasks = BackgroundTasks):
     file_bytes = await file.read()
 
     # Validate and load image
@@ -62,7 +68,7 @@ async def add_fragments(file: UploadFile = Depends(validate_image_file), encoder
     print("Image received successfully")
 
     fragments_count = encoder.add_fragments_from_img(np_image)
-
+    background_tasks.add_task(encoder.db.build_tree)
     if fragments_count:
         return {
             "status": "Successfully added fragments into base",
@@ -74,7 +80,9 @@ async def add_fragments(file: UploadFile = Depends(validate_image_file), encoder
 
 
 @app.post("/encode-image/")
-async def upload_file(file: UploadFile = Depends(validate_image_file), encoder: Encoder = Depends(get_encoder)):
+async def encode_image(file: UploadFile = Depends(validate_image_file),
+                       encoder: Encoder = Depends(get_encoder),
+                       background_tasks: BackgroundTasks = BackgroundTasks):
     file_bytes = await file.read()
 
     image = validate_and_convert_to_nparray(file_bytes)
@@ -86,23 +94,30 @@ async def upload_file(file: UploadFile = Depends(validate_image_file), encoder: 
         encoded_image = encoder.encode(image)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Encoding failed: {str(e)}")
-
+    # Фоново оновлюємо дерево й додаємо нові фрагменти в БД
+    background_tasks.add_task(encoder.db.update_fragments)
     return StreamingResponse(
         io.BytesIO(encoded_image),
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{file.filename.split('.')[0]}.bin"'},
     )
 
+
 class ImageSize(BaseModel):
-    width: int
-    height: int
+    width: int = Form()
+    height: int = Form()
+
+
+def get_image_size(
+        width: int = Form(...),
+        height: int = Form(...)) -> ImageSize:
+    return ImageSize(width=width, height=height)
 
 
 @app.post("/decode-image/")
 async def decode_image(
         compressed_img: UploadFile = File(...),
-        width: int = Form(...),
-        height: int = Form(...),
+        img_size: ImageSize = Depends(get_image_size),
         encoder: Encoder = Depends(get_encoder)
 ):
     try:
@@ -110,7 +125,7 @@ async def decode_image(
         compressed_img = await compressed_img.read()
 
         # Декодуємо отримані дані
-        decoded_image = encoder.decode(compressed_img, (int(width), int(height)))
+        decoded_image = encoder.decode(compressed_img, (img_size.height, img_size.width))
 
         # Конвертуємо отримане зображення в формат, який можна відправити як відповідь
         decoded_image = cv2.cvtColor(decoded_image, cv2.COLOR_RGB2BGR)
@@ -130,6 +145,19 @@ async def decode_image(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Decoding failed: {str(e)}")
+
+
+@app.post("/change-similarity-threshold/{threshold}")
+def change_similarity_threshold(threshold: float, encoder: Encoder = Depends(get_encoder)):
+    # Validate the threshold range
+    if not (0 <= threshold <= 1):
+        raise HTTPException(status_code=400, detail="Threshold must be between 0 and 1.")
+
+    # Set the similarity threshold in the encoder
+    encoder.set_similarity_threshold(threshold)
+
+    # Return a JSON response
+    return {"message": f"Similarity threshold changed to {threshold}"}
 
 
 @app.get("/health/")
