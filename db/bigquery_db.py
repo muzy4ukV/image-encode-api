@@ -10,7 +10,6 @@ from typing import Optional
 from fragment import Fragment
 from .bucket_utils import GCSBucketUtils
 
-
 class BigQueryDB:
     def __init__(self):
         super().__init__()
