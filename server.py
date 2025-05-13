@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import UploadFile, File, Depends, HTTPException, Form
+from fastapi import UploadFile, File, Depends, HTTPException, Form, Request
 from fastapi.responses import StreamingResponse
 from fastapi import FastAPI
 import io
@@ -8,10 +8,28 @@ import cv2
 from pydantic import BaseModel
 from dotenv import load_dotenv
 load_dotenv()
+from contextlib import asynccontextmanager
+import tensorflow as tf
+
 
 from encoder import Encoder
-app = FastAPI()
-encoder = Encoder()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ⏳ Частина ДО yield — тут ініціалізуються ресурси
+    if tf.test.gpu_device_name():
+        print("Default GPU Device: {}".format(tf.test.gpu_device_name()))
+    else:
+        print("Please install GPU version of TF")
+    encoder = Encoder()
+    app.state.encoder = encoder
+
+    yield  # ⬅ Після цього FastAPI починає обробляти HTTP-запити
+
+app = FastAPI(lifespan=lifespan)
+
+def get_encoder(request: Request) -> Encoder:
+    return request.app.state.encoder
 
 def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
@@ -35,7 +53,7 @@ def validate_and_convert_to_nparray(file_bytes: bytes) -> np.ndarray:
 
 
 @app.post("/add-fragments/")
-async def add_fragments(file: UploadFile = Depends(validate_image_file)):
+async def add_fragments(file: UploadFile = Depends(validate_image_file), encoder: Encoder = Depends(get_encoder)):
     file_bytes = await file.read()
 
     # Validate and load image
@@ -56,7 +74,7 @@ async def add_fragments(file: UploadFile = Depends(validate_image_file)):
 
 
 @app.post("/encode-image/")
-async def upload_file(file: UploadFile = Depends(validate_image_file)):
+async def upload_file(file: UploadFile = Depends(validate_image_file), encoder: Encoder = Depends(get_encoder)):
     file_bytes = await file.read()
 
     image = validate_and_convert_to_nparray(file_bytes)
@@ -84,7 +102,8 @@ class ImageSize(BaseModel):
 async def decode_image(
         compressed_img: UploadFile = File(...),
         width: int = Form(...),
-        height: int = Form(...)
+        height: int = Form(...),
+        encoder: Encoder = Depends(get_encoder)
 ):
     try:
         # width, height = img_size.width, img_size.height
@@ -124,4 +143,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)

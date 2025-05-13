@@ -15,7 +15,6 @@ from .label_generator import LabelGenerator
 class BigQueryDB(BaseDB):
     def __init__(self):
         super().__init__()
-        print("Connecting to BigQuery...")
         # Завантажуємо облікові дані
         credentials = service_account.Credentials.from_service_account_file(os.environ['GOOGLE_CREDENTIALS_PATH'])
         # Створюємо клієнта BigQuery
