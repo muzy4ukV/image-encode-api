@@ -57,21 +57,17 @@ class Encoder:
                 self.db.save_results(path_to_save=f"fragments_base/frag_count_{checkpoints[check_index]}.npy")
                 check_index += 1
 
-    def get_db_size(self):
-        return len(self.db.fragments)
-
     def add_fragments_from_img(self, img: np.array):
         start_time = time()
         fragments = self.split_image_into_fragments(img, self.kernel_size, self.step_size)
         prep_fragments = self.prepare_fragments(fragments)
         print(f'Fragments count: {len(fragments)}')
 
-        for fragment in prep_fragments:
-            self.db.add_fragment(fragment)
+        self.db.add_fragments(prep_fragments)
 
         print(f"Image fragments adding time: {time() - start_time}")
 
-        return True
+        return len(fragments)
 
     def encode(self, img: np.array) -> bytes:
         start_time = time()

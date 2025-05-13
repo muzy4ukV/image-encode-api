@@ -3,7 +3,7 @@ from fragment import Fragment
 
 class BaseDB:
     def __init__(self):
-        pass
+        self.fragments = {}
 
     def is_empty(self):
         pass
@@ -14,6 +14,9 @@ class BaseDB:
     def add_fragment(self, fragment: Fragment):
         pass
 
+    def add_fragments(self, fragments: list[Fragment]):
+        pass
+
     def get_fragment_by_id(self, fragment_id: int):
         pass
 
@@ -21,4 +24,7 @@ class BaseDB:
         pass
 
     def save_results(self, path_to_save=None):
+        pass
+
+    def get_db_size(self):
         pass

@@ -6,11 +6,12 @@ import io
 import numpy as np
 import cv2
 from pydantic import BaseModel
-from encoder import Encoder
+from dotenv import load_dotenv
+load_dotenv()
 
+from encoder import Encoder
 app = FastAPI()
 encoder = Encoder()
-
 
 def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
     if not file.filename.endswith((".jpg", ".jpeg", ".png")):
@@ -42,12 +43,13 @@ async def add_fragments(file: UploadFile = Depends(validate_image_file)):
 
     print("Image received successfully")
 
-    operation_result = encoder.add_fragments_from_img(np_image)
+    fragments_count = encoder.add_fragments_from_img(np_image)
 
-    if operation_result:
+    if fragments_count:
         return {
             "status": "Successfully added fragments into base",
-            "db_fragments_count": encoder.get_db_size()
+            "added_fragments_count": fragments_count,
+            "db_fragments_count": encoder.db.get_db_size()
         }
     else:
         raise HTTPException(status_code=500, detail="Failed to add fragments into base")

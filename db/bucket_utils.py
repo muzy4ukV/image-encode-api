@@ -3,13 +3,13 @@ from google.cloud import storage
 import cv2
 import tempfile
 import uuid
+import os
 
 class GCSBucketUtils:
-    DEFAULT_SERVICE_ACCOUNT_PATH = 'service-key.json'
-    DEFAULT_BUCKET_NAME = 'fragments-base'
-    def __init__(self, bucket_name=DEFAULT_BUCKET_NAME, service_account_path=DEFAULT_SERVICE_ACCOUNT_PATH):
-        self.bucket_name = bucket_name
-        self.service_account_path = service_account_path
+
+    def __init__(self):
+        self.bucket_name = os.environ.get('GCP_BUCKET_NAME')
+        self.service_account_path = os.environ.get('GOOGLE_CREDENTIALS_PATH')
         self.client = storage.Client.from_service_account_json(self.service_account_path)
         self.bucket = self.client.get_bucket(self.bucket_name)
 
