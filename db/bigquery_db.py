@@ -1,18 +1,21 @@
 import numpy as np
+from annoy import AnnoyIndex
 from google.cloud import bigquery
 from google.oauth2 import service_account
 import os
 import pandas as pd
-
+import cv2
 from typing import Optional
-
+from time import time
 from fragment import Fragment
 from .base import BaseDB
 from .bucket_utils import GCSBucketUtils
+from .label_generator import LabelGenerator
 
 class BigQueryDB(BaseDB):
     def __init__(self):
         super().__init__()
+        print("Connecting to BigQuery...")
         # Завантажуємо облікові дані
         credentials = service_account.Credentials.from_service_account_file(os.environ['GOOGLE_CREDENTIALS_PATH'])
         # Створюємо клієнта BigQuery
@@ -24,29 +27,41 @@ class BigQueryDB(BaseDB):
         self.table_id = os.environ['GCP_TABLE_ID']
         self.target_table = self.client.get_table(f"{self.project_id}.{self.dataset_id}.{self.table_id}")
         self.bucket = GCSBucketUtils()
+        self.label_generator = None
+        self.init_label_generator()
+        self.build_tree()
+
+    def init_label_generator(self):
+        query = (f"SELECT COALESCE(MAX(id), 0) as max_db_label "
+                 f"FROM `{self.project_id}.{self.dataset_id}.{self.table_id}`")
+        result = self.client.query(query).result()
+        row = next(result)
+        self.label_generator = LabelGenerator(row["max_db_label"])
 
     def is_empty(self):
-        return False
+        return self.tree is None
 
     def build_tree(self):
-        query = """
-            SELECT name, COUNT(*) as total
-            FROM `your_project_id.your_dataset_id.your_table_id`
-            GROUP BY name
-            ORDER BY total DESC
-        """
-        query_job = self.client.query(query)  # Запуск запиту
+        start_time = time()
+        query = f"SELECT * FROM `{self.project_id}.{self.dataset_id}.{self.table_id}`"
+        features_df = self.client.query(query).to_dataframe()
 
-        # Обробка результатів
-        for row in query_job:
-            print(f"name: {row['name']}, total: {row['total']}")
+        features_dims = np.frombuffer(features_df.iloc[0]['features'], dtype=np.float32).shape[0]
+        self.tree = AnnoyIndex(features_dims, 'angular')
+        features_df.apply(
+            lambda row: self.tree.add_item(row['id'], np.frombuffer(row['features'], dtype=np.float32)), axis=1
+        )
+        self.tree.build(10, n_jobs=-1)
+        print("Time building tree: ", time() - start_time)
+
 
     def add_fragments(self, fragments: list[Fragment]) -> Optional[str]:
         rows = []
         for fragment in fragments:
-            img_uuid = self.bucket.add_fragment(fragment.img)
+            img_label = self.label_generator.generate()
+            self.bucket.add_fragment(fragment.img, img_label)
             rows.append({
-                "id": img_uuid,
+                "id": img_label,
                 "features": fragment.feature.tobytes()
             })
 
@@ -61,13 +76,28 @@ class BigQueryDB(BaseDB):
             print(f"Error occurred while adding fragments to BigQuery: {e}")
             return None
 
-    def health(self):
-        # Тепер ви можете виконувати запити до BigQuery. Наприклад, вивести список датасетів:
-        datasets = self.client.list_datasets()
-
-        print("Datasets in project:", self.client.project)
-        for dataset in datasets:
-            print(dataset.dataset_id)
+    def add_fragment(self, fragment: Fragment):
+        return self.add_fragments([fragment])
 
     def get_db_size(self):
-        return self.target_table.num_rows  # Кількість рядків (може бути кешованою)
+        try:
+            query = f"SELECT COUNT(*) as row_count FROM `{self.project_id}.{self.dataset_id}.{self.table_id}`"
+            result = self.client.query(query).result()
+            row = next(result)
+            return row["row_count"]
+        except Exception as e:
+            print(f"Error while querying row count: {e}")
+            return -1
+
+    def find_similar_fragment_id(self, fragment_feature):
+        similar_fragment_id = self.tree.get_nns_by_vector(fragment_feature, 1)[0]
+        return similar_fragment_id
+
+    def get_fragment_by_id(self, fragment_id: int):
+        try:
+            img_bytes = self.bucket.get_fragment(fragment_id)
+            img_arr = np.frombuffer(img_bytes, dtype=np.uint8)
+            img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+        except:
+            raise ValueError(f"Cannot decode the {fragment_id}.png fragment")
+        return img
