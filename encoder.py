@@ -12,6 +12,7 @@ from scipy.spatial import KDTree
 from db.bigquery_db import BigQueryDB
 from fragment import Fragment
 from time import time
+from decorators import timing
 
 
 class Encoder:
@@ -61,8 +62,8 @@ class Encoder:
 
         return len(fragments)
 
+    @timing("Encoding time")
     def encode(self, img: np.array) -> bytes:
-        start_time = time()
         fragments = self.split_image_into_fragments(img, self.kernel_size, self.step_size)
         prep_fragments = self.prepare_fragments(fragments)
         print(f'Fragments count: {len(fragments)}')
@@ -77,7 +78,7 @@ class Encoder:
                 continue
 
             similar_fragment_id = self.db.find_similar_fragment_id(fragment.feature)
-            similar_fragment_img = self.db.get_fragment_by_id(similar_fragment_id)
+            similar_fragment_img = self.db.get_image_by_id(similar_fragment_id)
             similarity = self.get_ssim(fragment.img, similar_fragment_img)
 
             if similarity > self.similarity_threshold:
@@ -86,9 +87,6 @@ class Encoder:
             else:
                 new_fragment_id = self.db.add_fragment(fragment)
                 similarity_data.append((fragment, new_fragment_id, 1))
-
-        #if self.db_type == 'file':
-        #    self.db.save_results()
 
         # Filter and sort similarity data
         similarity_data.sort(key=lambda x: x[2], reverse=True)
@@ -123,11 +121,10 @@ class Encoder:
         print(f'Encoded data size: {len(compressed_data)}')
         print(f'Count of fragments using: {fragments_count}')
         print(f'Percent of fragments using: {fragments_count/len(similarity_data)*100:.2f}%')
-        print(f'Encoding time: {time() - start_time}')
 
         return compressed_data
     
-
+    @timing("Decoding time")
     def decode(self, compressed_indexes: bytes, img_size: tuple) -> np.array:
         decoded_data = lzma.decompress(compressed_indexes)
         decoded_array = np.frombuffer(decoded_data, dtype=np.uint64)
@@ -135,7 +132,7 @@ class Encoder:
         decoded_fragments = []
   
         for fragment in decoded_info:
-            fragment_img = self.db.get_fragment_by_id(fragment[0])
+            fragment_img = self.db.get_image_by_id(fragment[0])
             fragment_img = cv2.resize(fragment_img, (self.kernel_size, self.kernel_size))
             decoded_fragments.append(Fragment(img=fragment_img, x=fragment[1], y=fragment[2]))
 
@@ -149,8 +146,8 @@ class Encoder:
             resized_images = tf.image.resize(images, [224, 224])
             return self.model(resized_images)
 
+    @timing("Extraction features from fragments time")
     def prepare_fragments(self, fragments):
-        start_time = time()
         batch_size = 64
 
         # Transform fragments into a tensor
@@ -172,7 +169,6 @@ class Encoder:
                     fragment = fragments[fragment_index]
                     prep_fragments.append(Fragment(img=fragment.img, feature=feature, x=fragment.x, y=fragment.y))
 
-        print(f'Extraction features from fragments time: {time() - start_time}')
         return prep_fragments
     
 

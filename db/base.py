@@ -17,7 +17,7 @@ class BaseDB:
     def add_fragments(self, fragments: list[Fragment]):
         pass
 
-    def get_fragment_by_id(self, fragment_id: int):
+    def get_image_by_id(self, fragment_id: int):
         pass
 
     def find_similar_fragment_id(self, fragment_feature):
