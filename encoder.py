@@ -9,15 +9,14 @@ from numpy.lib.stride_tricks import as_strided
 from skimage.metrics import structural_similarity as ssim_metric
 from scipy.spatial import KDTree
 
-from db.factory import DBFactory
+from db.bigquery_db import BigQueryDB
 from fragment import Fragment
 from time import time
 
 
 class Encoder:
     def __init__(self):
-        self.db_type = 'bigquery'
-        self.db = DBFactory(self.db_type).get_db()
+        self.db = BigQueryDB()
         self.similarity_threshold = 0.9
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
         self.kernel_size = 16
