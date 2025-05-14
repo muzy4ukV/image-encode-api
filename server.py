@@ -153,6 +153,9 @@ async def decode_image(
             headers={"Content-Disposition": "inline; filename=decoded_image.png"}
         )
 
+    except ValueError as ve:
+        if "could not broadcast input array from shape" in str(ve):
+            raise HTTPException(status_code=400, detail="Image decoding failed: Invalid image dimensions")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Decoding failed: {str(e)}")
 
