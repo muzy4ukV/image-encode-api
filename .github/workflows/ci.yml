@@ -65,7 +65,7 @@ jobs:
         
       # BEGIN - Docker auth and build
       - name: 'Configure Docker for Artifact Registry'
-        run: |
+        run: |-
           gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev" --quiet
 
 
@@ -77,16 +77,23 @@ jobs:
           docker push "${DOCKER_TAG}"
       
       - name: 'Deploy to Cloud Run'
-        # END - Docker auth and build
-        uses: 'google-github-actions/deploy-cloudrun@v2' # google-github-actions/deploy-cloudrun@v2
-        with:
-          service: '${{ env.SERVICE }}'
-          region: '${{ env.REGION }}'
-          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_NAME }}/${{ env.SERVICE }}:${{ github.sha }}'
-          env_vars:
-            GCP_SA_KEY= ${{ secrets.GCP_SA_KEY }}
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          gcloud run deploy "${{ env.SERVICE }}" \
+            --image="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_NAME }}/${{ env.SERVICE }}:${{ github.sha }}" \
+            --region="${{ env.REGION }}" \
+            --allow-unauthenticated \
+            --cpu=8 \
+            --memory=16Gi \
+            --concurrency=80 \
+            --min-instances=1 \
+            --max-instances=1 \
+            --timeout=1000s \
+            --cpu-boost \
+            --no-cpu-throttling \
+            --update-env-vars="GCP_SA_KEY=$GCP_SA_KEY"
 
       - name: 'Show output'
         run: |2-
-
           echo ${{ steps.deploy.outputs.url }}
