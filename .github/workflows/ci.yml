@@ -92,7 +92,7 @@ jobs:
             --timeout=1000s \
             --cpu-boost \
             --no-cpu-throttling \
-            --update-env-vars="GCP_SA_KEY=$GCP_SA_KEY"
+            --update-env-vars=GCP_SA_KEY=$GCP_SA_KEY
 
       - name: 'Show output'
         run: |2-
