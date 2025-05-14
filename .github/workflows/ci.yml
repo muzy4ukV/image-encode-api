@@ -82,10 +82,10 @@ jobs:
         with:
           service: '${{ env.SERVICE }}'
           region: '${{ env.REGION }}'
-          # NOTE: If using a pre-built image, update the image name below:
           image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_NAME }}/${{ env.SERVICE }}:${{ github.sha }}'
-      # If required, use the Cloud Run URL output in later steps
-      
+          env_vars:
+            GCP_SA_KEY= ${{ secrets.GCP_SA_KEY }}
+
       - name: 'Show output'
         run: |2-
 
