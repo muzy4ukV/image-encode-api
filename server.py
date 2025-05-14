@@ -162,6 +162,32 @@ def change_similarity_threshold(threshold: float, encoder: Encoder = Depends(get
     return {"message": f"Similarity threshold changed to {threshold}"}
 
 
+@app.post("/get-ssim/")
+async def get_ssim_metric(
+    original_img: UploadFile = File(...),
+    decoded_img: UploadFile = File(...),
+    encoder: Encoder = Depends(get_encoder)
+):
+    # Валідація типів
+    validate_image_file(original_img)
+    validate_image_file(decoded_img)
+
+    # Читання байтів
+    original_bytes = await original_img.read()
+    decoded_bytes = await decoded_img.read()
+
+    # Перетворення у NumPy масив
+    original_np = validate_and_convert_to_nparray(original_bytes)
+    decoded_np = validate_and_convert_to_nparray(decoded_bytes)
+
+    # Обчислення SSIM
+    ssim_value = encoder.get_ssim(original_np, decoded_np)
+
+    return {
+        "status": "success",
+        "ssim": ssim_value
+    }
+
 @app.get("/health/")
 def health():
     return {"status": "healthy"}
