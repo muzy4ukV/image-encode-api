@@ -9,7 +9,7 @@ from numpy.lib.stride_tricks import as_strided
 from skimage.metrics import structural_similarity as ssim_metric
 from scipy.spatial import KDTree
 
-from db.bigquery_db import BigQueryDB
+from gcp_utils.bigquery_db import BigQueryDB
 from fragment import Fragment
 from time import time
 from decorators import timing

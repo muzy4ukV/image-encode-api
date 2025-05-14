@@ -8,18 +8,18 @@ import os
 import pandas as pd
 from typing import Optional
 from fragment import Fragment
+from .credentials import CREDENTIALS
 from .bucket_utils import GCSBucketUtils
 
 class BigQueryDB:
     def __init__(self):
         super().__init__()
         # Завантажуємо облікові дані
-        credentials = service_account.Credentials.from_service_account_file(os.environ['GOOGLE_CREDENTIALS_PATH'])
         # Створюємо клієнта BigQuery
-        self.client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        self.client = bigquery.Client(credentials=CREDENTIALS, project=CREDENTIALS.project_id)
         self.target_size = 16
         self.tree = None
-        self.project_id = credentials.project_id
+        self.project_id = CREDENTIALS.project_id
         self.dataset_id = os.environ['GCP_DATASET_ID']
         self.table_id = os.environ['GCP_TABLE_ID']
         self.target_table = self.client.get_table(f"{self.project_id}.{self.dataset_id}.{self.table_id}")

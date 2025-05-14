@@ -22,4 +22,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8080
 
 # Запуск FastAPI через uvicorn. Cloud Run передає порт через змінну середовища.
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD ["python", "server.py"]
+

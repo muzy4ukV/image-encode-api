@@ -1,5 +1,6 @@
 import numpy as np
 from google.cloud import storage
+from .credentials import CREDENTIALS
 import cv2
 import tempfile
 import os
@@ -8,8 +9,7 @@ class GCSBucketUtils:
 
     def __init__(self):
         self.bucket_name = os.environ.get('GCP_BUCKET_NAME')
-        self.service_account_path = os.environ.get('GOOGLE_CREDENTIALS_PATH')
-        self.client = storage.Client.from_service_account_json(self.service_account_path)
+        self.client = storage.Client(credentials=CREDENTIALS, project=CREDENTIALS.project_id)
         self.bucket = self.client.get_bucket(self.bucket_name)
 
     def add_fragment(self, array: np.array, label: int):

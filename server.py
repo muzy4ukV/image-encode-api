@@ -1,3 +1,5 @@
+import os
+
 import uvicorn
 from fastapi import UploadFile, File, Depends, HTTPException, Form, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -171,4 +173,5 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("server:app", host="0.0.0.0", port=port)
