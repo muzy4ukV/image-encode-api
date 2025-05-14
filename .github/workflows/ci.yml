@@ -92,7 +92,7 @@ jobs:
             --timeout=1000s \
             --cpu-boost \
             --no-cpu-throttling \
-            --set-env-vars=GCP_SA_KEY_B64=GCP_SA_KEY_B64
+            --set-env-vars=GCP_SA_KEY_B64='${GCP_SA_KEY_B64}'
 
       - name: 'Show output'
         run: |2-
