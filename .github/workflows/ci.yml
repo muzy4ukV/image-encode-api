@@ -35,9 +35,9 @@ on:
       - main
 
 env:
-  PROJECT_ID: 'image-encoding' # TODO: update to your Google Cloud project ID
-  REGION: 'us-central1' # TODO: update to your region
-  SERVICE: 'image-encoding' # TODO: update to your service name
+  PROJECT_ID: 'image-encoding' #
+  REGION: 'us-central1' #
+  SERVICE: 'image-encoding' #
 
 jobs:
   deploy:
@@ -63,11 +63,13 @@ jobs:
 
         
       # BEGIN - Docker auth and build
-      #
-      # If you already have a container image, you can omit these steps.
       - name: 'Docker Auth'
-        run: |-
-          gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev"
+        uses: 'docker/login-action@v3'
+        with:
+          username: 'oauth2accesstoken'
+          password: '${{ steps.auth.outputs.auth_token }}'
+          registry: '${{ env.REGION }}-docker.pkg.dev'
+
 
 
       - name: 'Build and Push Container'
