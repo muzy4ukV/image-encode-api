@@ -1,14 +1,11 @@
-import os
-import json
+import os, json, base64
 from google.oauth2 import service_account
 
+encoded = os.getenv("GCP_SA_KEY_B64")
+if not encoded:
+    raise RuntimeError("Missing GCP_SA_KEY_B64")
 
-_raw_key = os.environ.get("GCP_SA_KEY")
-if not _raw_key:
-    raise RuntimeError("Missing GCP_SA_KEY environment variable")
+decoded = base64.b64decode(encoded).decode("utf-8")
+info = json.loads(decoded)
 
-try:
-    SERVICE_KEY = json.loads(_raw_key)
-    CREDENTIALS = service_account.Credentials.from_service_account_info(SERVICE_KEY)
-except json.JSONDecodeError as e:
-    raise ValueError(f"Invalid JSON in GCP_SA_KEY: {e}")
+CREDENTIALS = service_account.Credentials.from_service_account_info(info)

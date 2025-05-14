@@ -3,7 +3,6 @@ from decorators import timing
 import numpy as np
 from annoy import AnnoyIndex
 from google.cloud import bigquery
-from google.oauth2 import service_account
 import os
 import pandas as pd
 from typing import Optional

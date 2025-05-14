@@ -78,21 +78,21 @@ jobs:
       
       - name: 'Deploy to Cloud Run'
         env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY_B64 }}
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_NAME }}/${{ env.SERVICE }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --allow-unauthenticated \
             --cpu=8 \
-            --memory=16Gi \
+            --memory=32Gi \
             --concurrency=80 \
             --min-instances=1 \
             --max-instances=1 \
             --timeout=1000s \
             --cpu-boost \
             --no-cpu-throttling \
-            --update-env-vars=GCP_SA_KEY=$GCP_SA_KEY
+            --set-env-vars=GCP_SA_KEY=$GCP_SA_KEY
 
       - name: 'Show output'
         run: |2-
