@@ -192,7 +192,11 @@ async def get_ssim_metric(
     decoded_np = validate_and_convert_to_nparray(decoded_bytes)
 
     # Обчислення SSIM
-    ssim_value = encoder.get_ssim(original_np, decoded_np)
+    try:
+        ssim_value = encoder.get_ssim(original_np, decoded_np)
+    except ValueError as ve:
+        if "Input images must have the same dimensions" in str(ve):
+            raise HTTPException(status_code=400, detail="SSIM calculation failed: Images have different dimensions")
 
     return {
         "status": "success",

@@ -11,12 +11,12 @@ from .credentials import CREDENTIALS
 from .bucket_utils import GCSBucketUtils
 
 class BigQueryDB:
-    def __init__(self):
+    def __init__(self, kernel_size: int = 16):
         super().__init__()
         # Завантажуємо облікові дані
         # Створюємо клієнта BigQuery
         self.client = bigquery.Client(credentials=CREDENTIALS, project=CREDENTIALS.project_id)
-        self.target_size = 16
+        self.target_size = kernel_size
         self.tree = None
         self.project_id = CREDENTIALS.project_id
         self.dataset_id = os.environ['GCP_DATASET_ID']
