@@ -17,7 +17,7 @@ from decorators import timing
 
 class Encoder:
     def __init__(self):
-        self.similarity_threshold = 0.5
+        self.similarity_threshold = 0.8
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
         self.kernel_size = 32
         self.step_size = 16
@@ -72,7 +72,7 @@ class Encoder:
         fragments_count = 0
         for fragment in prep_fragments:
             if self.db.is_empty():
-                new_fragment_id = self.db.add_fragment(fragment)
+                new_fragment_id = self.db.add_fragment(fragment, flag=True)
                 similarity_data.append((fragment, new_fragment_id, 1))
                 continue
 
@@ -84,7 +84,7 @@ class Encoder:
                 fragments_count+=1
                 similarity_data.append((fragment, similar_fragment_id, similarity))
             else:
-                new_fragment_id = self.db.add_fragment(fragment)
+                new_fragment_id = self.db.add_fragment(fragment, flag=True)
                 similarity_data.append((fragment, new_fragment_id, 1))
 
         # Filter and sort similarity data

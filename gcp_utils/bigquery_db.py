@@ -83,14 +83,15 @@ class BigQueryDB:
             print(f"Error occurred while adding fragments to BigQuery: {e}")
             raise e
 
-    def add_fragment(self, fragment: Fragment):
+    def add_fragment(self, fragment: Fragment, flag: bool = False):
         fragment_elem = {
             'image': fragment.img,
             'feature': fragment.feature
         }
         fragment_id = len(self.fragments)
         self.fragments[fragment_id] = fragment_elem
-        self.buffer_fragments_ids.append(fragment_id)
+        if flag:
+            self.buffer_fragments_ids.append(fragment_id)
         return fragment_id
 
     @timing("Time updating fragments")
@@ -99,7 +100,7 @@ class BigQueryDB:
             return
         else:
             fragment_to_add = []
-            for i, fragment_id in enumerate(self.buffer_fragments_ids):
+            for fragment_id in self.buffer_fragments_ids:
                 fragment = self.fragments[fragment_id]
                 fragment_to_add.append({
                     "id": fragment_id,
