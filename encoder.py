@@ -17,10 +17,10 @@ from decorators import timing
 
 class Encoder:
     def __init__(self):
-        self.similarity_threshold = 0.9
+        self.similarity_threshold = 0.5
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
-        self.kernel_size = 16
-        self.step_size = 8
+        self.kernel_size = 32
+        self.step_size = 16
         self.db = BigQueryDB(self.kernel_size)
 
     def fill_db(self, dir_path: str):

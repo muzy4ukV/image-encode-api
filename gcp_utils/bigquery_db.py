@@ -9,6 +9,7 @@ from typing import Optional
 from fragment import Fragment
 from .credentials import CREDENTIALS
 from .bucket_utils import GCSBucketUtils
+from .label_generator import LabelGenerator
 
 class BigQueryDB:
     def __init__(self, kernel_size: int = 16):
@@ -23,6 +24,7 @@ class BigQueryDB:
         self.table_id = os.environ['GCP_TABLE_ID']
         self.target_table = self.client.get_table(f"{self.project_id}.{self.dataset_id}.{self.table_id}")
         self.fragments = {}
+        self.label_generator = None
         self.prepare_fragments()
         self.buffer_fragments_ids = []
 
@@ -40,11 +42,12 @@ class BigQueryDB:
             return
 
         for i, row in features_df.iterrows():
+            fragment_id = int(row['id'])
             fragment_doc = {
                 'image': np.frombuffer(base64.b64decode(row['image']), dtype=np.uint8).reshape(self.target_size, self.target_size, 3),
                 'feature': np.frombuffer(row['features'], dtype=np.float32)
             }
-            self.fragments[i] = fragment_doc
+            self.fragments[fragment_id] = fragment_doc
 
         self.build_tree()
 
@@ -62,12 +65,14 @@ class BigQueryDB:
         rows = []
         for fragment in fragments:
             rows.append({
+                "id": len(self.fragments),
                 "image": base64.b64encode(fragment.img.tobytes()).decode('utf-8'),
                 "features": fragment.feature.tobytes()
             })
             self.add_fragment(fragment)
 
         fragments_df = pd.DataFrame(rows)
+        fragments_df['id'] = fragments_df['id'].astype(int)
 
         try:
             job = self.client.load_table_from_dataframe(fragments_df, self.target_table)
@@ -76,7 +81,7 @@ class BigQueryDB:
 
         except Exception as e:
             print(f"Error occurred while adding fragments to BigQuery: {e}")
-            return None
+            raise e
 
     def add_fragment(self, fragment: Fragment):
         fragment_elem = {
@@ -94,9 +99,10 @@ class BigQueryDB:
             return
         else:
             fragment_to_add = []
-            for fragment_id in self.buffer_fragments_ids:
+            for i, fragment_id in enumerate(self.buffer_fragments_ids):
                 fragment = self.fragments[fragment_id]
                 fragment_to_add.append({
+                    "id": fragment_id,
                     "image": base64.b64encode(fragment['image'].tobytes()).decode('utf-8'),
                     "features": fragment['feature'].tobytes()
                 })
