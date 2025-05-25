@@ -62,6 +62,8 @@ class BigQueryDB:
         print("Tree was built")
 
     def add_fragments(self, fragments: list[Fragment]) -> Optional[str]:
+        if len(fragments) == 0:
+            return "No fragments to add into base"
         rows = []
         for fragment in fragments:
             rows.append({
@@ -77,7 +79,7 @@ class BigQueryDB:
         try:
             job = self.client.load_table_from_dataframe(fragments_df, self.target_table)
             job.result()
-            return "Data loaded successfully"
+            return "Successfully added fragments into base"
 
         except Exception as e:
             print(f"Error occurred while adding fragments to BigQuery: {e}")

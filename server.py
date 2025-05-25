@@ -77,11 +77,11 @@ async def add_fragments(file: UploadFile = Depends(validate_image_file),
 
     print("Image received successfully")
 
-    fragments_count = encoder.add_fragments_from_img(np_image)
+    adding_status, fragments_count = encoder.add_fragments_from_img(np_image)
     background_tasks.add_task(encoder.db.build_tree)
-    if fragments_count:
+    if not fragments_count is None:
         return {
-            "status": "Successfully added fragments into base",
+            "status": adding_status,
             "added_fragments_count": fragments_count,
             "db_fragments_count": encoder.db.get_db_size()
         }

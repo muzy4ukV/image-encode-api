@@ -54,12 +54,29 @@ class Encoder:
     def add_fragments_from_img(self, img: np.array):
         fragments = self.split_image_into_fragments(img, self.kernel_size, self.step_size)
         prep_fragments = self.prepare_fragments(fragments)
-        print(f'Fragments count: {len(fragments)}')
+
         start_time = time()
-        self.db.add_fragments(prep_fragments)
+        new_fragments = []
+        if not self.db.is_empty():
+            for fragment in prep_fragments:
+                similar_fragment_id = self.db.find_similar_fragment_id(fragment.feature)
+                similar_fragment_img = self.db.get_image_by_id(similar_fragment_id)
+                similarity = self.get_ssim(fragment.img, similar_fragment_img)
+
+                if similarity < self.similarity_threshold:
+                    new_fragments.append(fragment)
+        else:
+            new_fragments = prep_fragments
+
+        print(f"Checking of fragments similarity: {time() - start_time}")
+        print(f'All fragments from image: {len(fragments)}')
+        print(f'New unique fragments count: {len(new_fragments)}')
+
+        start_time = time()
+        status = self.db.add_fragments(new_fragments)
         print(f"Image fragments adding to bq time: {time() - start_time}")
 
-        return len(fragments)
+        return status, len(new_fragments)
 
     @timing("Encoding time")
     def encode(self, img: np.array) -> bytes:
