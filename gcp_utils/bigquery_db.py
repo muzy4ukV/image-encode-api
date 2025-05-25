@@ -4,6 +4,7 @@ import numpy as np
 from annoy import AnnoyIndex
 from google.cloud import bigquery
 import os
+import cv2
 import pandas as pd
 from typing import Optional
 from fragment import Fragment
@@ -11,7 +12,16 @@ from .credentials import CREDENTIALS
 from .bucket_utils import GCSBucketUtils
 from .label_generator import LabelGenerator
 
+
 class BigQueryDB:
+    TABLE_CONFIG = bigquery.LoadJobConfig(
+        schema=[
+            bigquery.SchemaField("id", "INTEGER", "REQUIRED"),
+            bigquery.SchemaField("image", "BYTES", "REQUIRED"),  # <== ключове
+            bigquery.SchemaField("features", "BYTES", "REQUIRED")
+        ]
+    )
+
     def __init__(self, kernel_size: int = 16):
         super().__init__()
         # Завантажуємо облікові дані
@@ -28,7 +38,6 @@ class BigQueryDB:
         self.prepare_fragments()
         self.buffer_fragments_ids = []
 
-
     def is_empty(self):
         return len(self.fragments) == 0
 
@@ -43,8 +52,13 @@ class BigQueryDB:
 
         for i, row in features_df.iterrows():
             fragment_id = int(row['id'])
+
+            # Декодуємо PNG байти (row['image'] — це bytes)
+            image = cv2.imdecode(np.frombuffer(row['image'], dtype=np.uint8), cv2.IMREAD_COLOR)
+            # Приводимо до RGB (якщо потрібно)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             fragment_doc = {
-                'image': np.frombuffer(base64.b64decode(row['image']), dtype=np.uint8).reshape(self.target_size, self.target_size, 3),
+                'image': image,
                 'feature': np.frombuffer(row['features'], dtype=np.float32)
             }
             self.fragments[fragment_id] = fragment_doc
@@ -68,7 +82,7 @@ class BigQueryDB:
         for fragment in fragments:
             rows.append({
                 "id": len(self.fragments),
-                "image": base64.b64encode(fragment.img.tobytes()).decode('utf-8'),
+                "image": BigQueryDB.compress_nparr_to_bytes(fragment.img),
                 "features": fragment.feature.tobytes()
             })
             self.add_fragment(fragment)
@@ -77,7 +91,8 @@ class BigQueryDB:
         fragments_df['id'] = fragments_df['id'].astype(int)
 
         try:
-            job = self.client.load_table_from_dataframe(fragments_df, self.target_table)
+            job = self.client.load_table_from_dataframe(fragments_df, self.target_table,
+                                                        job_config=BigQueryDB.TABLE_CONFIG)
             job.result()
             return "Successfully added fragments into base"
 
@@ -106,12 +121,13 @@ class BigQueryDB:
                 fragment = self.fragments[fragment_id]
                 fragment_to_add.append({
                     "id": fragment_id,
-                    "image": base64.b64encode(fragment['image'].tobytes()).decode('utf-8'),
+                    "image": BigQueryDB.compress_nparr_to_bytes(fragment['image']),
                     "features": fragment['feature'].tobytes()
                 })
             fragments_df = pd.DataFrame(fragment_to_add)
             try:
-                job = self.client.load_table_from_dataframe(fragments_df, self.target_table)
+                job = self.client.load_table_from_dataframe(fragments_df, self.target_table,
+                                                            job_config=BigQueryDB.TABLE_CONFIG)
                 job.result()
                 print("Updated fragments loaded successfully")
                 self.buffer_fragments_ids = []
@@ -129,3 +145,9 @@ class BigQueryDB:
     def find_similar_fragment_id(self, fragment_feature):
         similar_fragment_id = self.tree.get_nns_by_vector(fragment_feature, 1)[0]
         return similar_fragment_id
+
+    @staticmethod
+    def compress_nparr_to_bytes(nparr):
+        # PNG-стиснення
+        _, encoded_png = cv2.imencode('.png', cv2.cvtColor(nparr, cv2.COLOR_RGB2BGR))
+        return encoded_png.tobytes()

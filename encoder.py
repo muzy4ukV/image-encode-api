@@ -55,7 +55,6 @@ class Encoder:
         fragments = self.split_image_into_fragments(img, self.kernel_size, self.step_size)
         prep_fragments = self.prepare_fragments(fragments)
 
-        start_time = time()
         new_fragments = []
         if not self.db.is_empty():
             for fragment in prep_fragments:
@@ -68,7 +67,6 @@ class Encoder:
         else:
             new_fragments = prep_fragments
 
-        print(f"Checking of fragments similarity: {time() - start_time}")
         print(f'All fragments from image: {len(fragments)}')
         print(f'New unique fragments count: {len(new_fragments)}')
 
