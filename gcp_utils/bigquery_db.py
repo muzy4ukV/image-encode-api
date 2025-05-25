@@ -1,4 +1,3 @@
-import base64
 from decorators import timing
 import numpy as np
 from annoy import AnnoyIndex
