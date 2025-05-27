@@ -171,7 +171,12 @@ def change_similarity_threshold(threshold: float, encoder: Encoder = Depends(get
     encoder.set_similarity_threshold(threshold)
 
     # Return a JSON response
-    return {"message": f"Similarity threshold changed to {threshold}"}
+    return {"message": f"Similarity threshold changed to {threshold}",
+            "similarity_threshold": encoder.similarity_threshold}
+
+@app.get("/get-similarity-threshold/")
+def get_similarity_threshold(encoder: Encoder = Depends(get_encoder)):
+    return {"similarity_threshold": encoder.similarity_threshold}
 
 
 @app.post("/get-ssim/")
