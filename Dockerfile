@@ -5,20 +5,21 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libgl1 \
     libglib2.0-0 \
-    python3-opencv \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --upgrade pip
 
-# Встановлюємо робочу директорію
-WORKDIR /usr/src/app
+# Встановлення робочої директорії
+WORKDIR /app
 
-# Копіюємо всі файли проєкту до контейнера
-COPY . .
+# Копіюємо тільки requirements.txt на ранньому етапі (для використання layer cache)
+COPY requirements.txt .
 
-# Встановлюємо залежності
+# Встановлюємо Python-залежності
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Копіюємо решту проєкту
+COPY . .
 
 # Вказуємо порт для документації
 EXPOSE 8080

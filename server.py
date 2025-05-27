@@ -106,10 +106,11 @@ async def encode_image(file: UploadFile = Depends(validate_image_file),
         raise HTTPException(status_code=500, detail=f"Encoding failed: {str(e)}")
     # Фоново оновлюємо дерево й додаємо нові фрагменти в БД
     background_tasks.add_task(encoder.db.update_fragments)
+    filename_no_ext = file.filename.split(".")[0]
     return StreamingResponse(
         io.BytesIO(encoded_image),
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{file.filename.split('.')[0]}.bin"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename_no_ext}.bin"'},
     )
 
 

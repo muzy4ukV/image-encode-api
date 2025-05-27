@@ -30,9 +30,7 @@
 name: 'Build and Deploy to Cloud Run'
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 env:
   PROJECT_ID: 'image-encoding' #
@@ -76,10 +74,6 @@ jobs:
           docker build --tag "${DOCKER_TAG}" .
           docker push "${DOCKER_TAG}"
 
-      - name: 'Debug Environment Variables'
-        run: |
-          echo "GCP_SA_KEY_B64: $GCP_SA_KEY_B64"
-
       - name: 'Deploy to Cloud Run'
         env:
           GCP_SA_KEY_B64: ${{ secrets.GCP_SA_KEY_B64 }}
@@ -91,11 +85,12 @@ jobs:
             --cpu=8 \
             --gpu=1 \
             --gpu-type=nvidia-l4 \
+            --no-gpu-zonal-redundancy \
             --memory=32Gi \
             --concurrency=80 \
             --min-instances=1 \
             --max-instances=1 \
-            --timeout=1000s \
+            --timeout=300s \
             --cpu-boost \
             --no-cpu-throttling \
             --set-env-vars=GCP_SA_KEY_B64="${GCP_SA_KEY_B64}"
