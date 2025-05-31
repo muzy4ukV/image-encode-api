@@ -21,7 +21,7 @@ class Encoder:
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
         self.kernel_size = 32
         self.step_size = 16
-        self.db = BigQueryDB(self.kernel_size)
+        self.db = BigQueryDB()
 
     def fill_db(self, dir_path: str):
         checkpoints = [20000, 50000, 100000, 150000, 200000]
@@ -254,7 +254,7 @@ class Encoder:
         # Get the coordinates of empty pixels outside the filled fragments
         empty_coords = np.argwhere(~mask)
 
-        if filled_coords.size == 0:
+        if empty_coords.size == 0:
             return reconstructed_image
 
         # Create a KDTree from non-black pixel indices
@@ -311,7 +311,7 @@ class Encoder:
         """
         Computes the Structural Similarity Index (SSIM) between two images.
         """
-        similarity = ssim_metric(original_img, decoded_img, multichannel=True, win_size=min(self.db.target_size, 7),
+        similarity = ssim_metric(original_img, decoded_img, multichannel=True, win_size=min(self.kernel_size, 7),
                                  channel_axis=2)
         return similarity
 

@@ -41,6 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 def get_encoder(request: Request) -> Encoder:
     return request.app.state.encoder
 
@@ -174,6 +175,7 @@ def change_similarity_threshold(threshold: float, encoder: Encoder = Depends(get
     return {"message": f"Similarity threshold changed to {threshold}",
             "similarity_threshold": encoder.ssim_threshold}
 
+
 @app.get("/get-similarity-threshold/")
 def get_similarity_threshold(encoder: Encoder = Depends(get_encoder)):
     return {"similarity_threshold": encoder.ssim_threshold}
@@ -181,9 +183,9 @@ def get_similarity_threshold(encoder: Encoder = Depends(get_encoder)):
 
 @app.post("/get-ssim/")
 async def get_ssim_metric(
-    original_img: UploadFile = File(...),
-    decoded_img: UploadFile = File(...),
-    encoder: Encoder = Depends(get_encoder)
+        original_img: UploadFile = File(...),
+        decoded_img: UploadFile = File(...),
+        encoder: Encoder = Depends(get_encoder)
 ):
     # Валідація типів
     validate_image_file(original_img)
