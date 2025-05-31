@@ -136,9 +136,8 @@ class BigQueryDB:
     def get_db_size(self):
         return len(self.fragments)
 
-    def get_fragment_image_by_id(self, fragment_id: int):
-        fragment = self.fragments[fragment_id]
-        return fragment['image']
+    def get_fragment_by_id(self, fragment_id: int):
+        return self.fragments[fragment_id]
 
     def find_similar_fragment_id(self, fragment_feature):
         similar_fragment_id = self.tree.get_nns_by_vector(fragment_feature, 1)[0]

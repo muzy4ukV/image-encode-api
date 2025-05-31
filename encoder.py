@@ -19,8 +19,8 @@ class Encoder:
     def __init__(self):
         self.ssim_threshold = 0.8
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
-        self.kernel_size = 32
-        self.step_size = 16
+        self.kernel_size = 16
+        self.step_size = 8
         self.db = BigQueryDB()
 
     def fill_db(self, dir_path: str):
@@ -59,7 +59,7 @@ class Encoder:
         if not self.db.is_empty():
             for fragment in prep_fragments:
                 similar_fragment_id = self.db.find_similar_fragment_id(fragment.features)
-                similar_fragment_img = self.db.get_fragment_image_by_id(similar_fragment_id)
+                similar_fragment_img = self.db.get_fragment_by_id(similar_fragment_id)['image']
                 similarity = self.get_ssim(fragment.image, similar_fragment_img)
 
                 if similarity < self.ssim_threshold:
@@ -94,7 +94,7 @@ class Encoder:
                 continue
 
             matched_fragment_id = self.db.find_similar_fragment_id(fragment.features)
-            matched_fragment_image = self.db.get_fragment_image_by_id(matched_fragment_id)
+            matched_fragment_image = self.db.get_fragment_by_id(matched_fragment_id)['image']
             similarity_score = self.get_ssim(fragment.image, matched_fragment_image)
 
             if similarity_score > self.ssim_threshold:
@@ -153,9 +153,9 @@ class Encoder:
 
         fragments = []
         for fragment_id, x, y in decoded_fragments:
-            fragment_image = self.db.get_fragment_image_by_id(fragment_id)
-            fragment_image = cv2.resize(fragment_image, (self.kernel_size, self.kernel_size))
-            fragments.append(Fragment(img=fragment_image, x=x, y=y))
+            fragment = self.db.get_fragment_by_id(fragment_id)
+            fragment_image = cv2.resize(fragment['image'], (self.kernel_size, self.kernel_size))
+            fragments.append(Fragment(img=fragment_image, feature=fragment['feature'], x=x, y=y))
 
         # Reconstruct the original image from fragments
         reconstructed_image = self.reconstruct_image(fragments, image_shape)
@@ -234,44 +234,63 @@ class Encoder:
         return fragments
 
     def reconstruct_image(self, fragments: List[Fragment], image_shape: tuple) -> np.array:
-        # Create an empty image
-        reconstructed_image = np.zeros((*image_shape, 3), dtype=np.uint8)
-        # Create a mask to mark occupied pixels
-        mask = np.zeros(image_shape, dtype=bool)
+        height = image_shape[0] - (image_shape[0] % self.kernel_size)
+        width = image_shape[1] - (image_shape[1] % self.kernel_size)
+
+        reconstructed_image = np.zeros((height, width, 3), dtype=np.uint8)
+        mask = np.zeros((height, width), dtype=bool)
+
+        # Підготовка словника фрагментів
+        fragment_dict = {}  # {(y, x): feature}
+        deleted_fragments = [fragments.pop(198), fragments.pop(199), fragments.pop(200), fragments.pop(201)]
 
         for fragment in fragments:
-            # Convert coordinates to integers
             x, y = int(fragment.x), int(fragment.y)
             h, w, _ = fragment.image.shape
+            fragment_dict[(y, x)] = fragment.features
 
-            # Assign the fragment to the corresponding region in the reconstructed image
             reconstructed_image[y:y + h, x:x + w] = fragment.image
             mask[y:y + h, x:x + w] = True
 
-        # Get the coordinates of non-black pixels
-        filled_coords = np.argwhere(mask)
+        # Координати порожніх фрагментів (верхній лівий кут)
+        empty_fragments = [
+            (y, x)
+            for y in range(0, height - self.kernel_size + 1, self.kernel_size)
+            for x in range(0, width - self.kernel_size + 1, self.kernel_size)
+            if not mask[y:y + self.kernel_size, x:x + self.kernel_size].any()
+        ]
 
-        # Get the coordinates of empty pixels outside the filled fragments
-        empty_coords = np.argwhere(~mask)
-
-        if empty_coords.size == 0:
+        if not empty_fragments:
             return reconstructed_image
 
-        # Create a KDTree from non-black pixel indices
-        tree = KDTree(filled_coords)
+        # KD-дерево по координатах заповнених фрагментів
+        fragments_coords = np.array(list(fragment_dict.keys()))
+        fragments_features = np.array(list(fragment_dict.values()))
+        tree = KDTree(fragments_coords)
 
-        # Define the number of nearest neighbors to consider
-        num_neighbors = 16
+        for i, (y, x) in enumerate(empty_fragments):
+            # Перевірка чи фрагмент на краю
+            is_edge = (
+                    x == 0 or y == 0 or
+                    x + self.kernel_size >= width or
+                    y + self.kernel_size >= height
+            )
+            num_neighbors = 5 if is_edge else 8
 
-        # For each empty pixel, find the nearest non-empty pixels and assign their color
-        for y, x in empty_coords:
-            # Find the nearest non-empty pixels using KDTree
-            _, nearest_idxs = tree.query([(y, x)], k=num_neighbors)  # Find the nearest non-black pixels
-            neighbors = filled_coords[nearest_idxs[0]]  # Get the coordinates of the nearest non-black pixels
-            # Calculate the mean color of the nearest non-black pixels
-            mean_color = np.mean(reconstructed_image[neighbors[:, 0], neighbors[:, 1]], axis=0)
-            # Assign the mean color to the empty pixels
-            reconstructed_image[y, x] = mean_color
+            # Пошук найближчих сусідів
+            dists, idxs = tree.query((y, x), k=num_neighbors)
+            neighbor_coords = fragments_coords[idxs]
+            nearest_features = fragments_features[idxs]
+
+            print(f"Empty at ({y}, {x}), neighbors at {neighbor_coords.tolist()}")
+
+            predicted_feature = np.mean(nearest_features, axis=0)
+            restored_id = self.db.find_similar_fragment_id(predicted_feature)
+            restored_fragment = self.db.get_fragment_by_id(restored_id)
+
+            print("ssim", self.get_ssim(deleted_fragments[i].image, restored_fragment['image']))
+
+            reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = restored_fragment['image']
 
         if self.ssim_threshold < 0.5:
             reconstructed_image = self.blend_fragments(fragments, reconstructed_image, image_shape)
@@ -311,9 +330,7 @@ class Encoder:
         """
         Computes the Structural Similarity Index (SSIM) between two images.
         """
-        similarity = ssim_metric(original_img, decoded_img, multichannel=True, win_size=min(self.kernel_size, 7),
-                                 channel_axis=2)
-        return similarity
+        return ssim_metric(original_img, decoded_img, multichannel=True, win_size=7, channel_axis=2)
 
     def is_overlapping(self, fragment1, fragment2):
         x1, y1, w1, h1 = fragment1[1], fragment1[2], self.kernel_size, self.kernel_size
