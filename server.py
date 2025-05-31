@@ -132,7 +132,7 @@ async def decode_image(
         encoder: Encoder = Depends(get_encoder)
 ):
     try:
-        # width, height = img_size.width, img_size.height
+        # width, height = image_shape.width, image_shape.height
         compressed_img = await compressed_img.read()
 
         # Декодуємо отримані дані
@@ -168,15 +168,15 @@ def change_similarity_threshold(threshold: float, encoder: Encoder = Depends(get
         raise HTTPException(status_code=400, detail="Threshold must be between 0 and 1.")
 
     # Set the similarity threshold in the encoder
-    encoder.set_similarity_threshold(threshold)
+    encoder.set_ssim_threshold(threshold)
 
     # Return a JSON response
     return {"message": f"Similarity threshold changed to {threshold}",
-            "similarity_threshold": encoder.similarity_threshold}
+            "similarity_threshold": encoder.ssim_threshold}
 
 @app.get("/get-similarity-threshold/")
 def get_similarity_threshold(encoder: Encoder = Depends(get_encoder)):
-    return {"similarity_threshold": encoder.similarity_threshold}
+    return {"similarity_threshold": encoder.ssim_threshold}
 
 
 @app.post("/get-ssim/")

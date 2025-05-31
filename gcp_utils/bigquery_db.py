@@ -81,8 +81,8 @@ class BigQueryDB:
         for fragment in fragments:
             rows.append({
                 "id": len(self.fragments),
-                "image": BigQueryDB.compress_nparr_to_bytes(fragment.img),
-                "features": fragment.feature.tobytes()
+                "image": BigQueryDB.compress_nparr_to_bytes(fragment.image),
+                "features": fragment.features.tobytes()
             })
             self.add_fragment(fragment)
 
@@ -101,8 +101,8 @@ class BigQueryDB:
 
     def add_fragment(self, fragment: Fragment, flag: bool = False):
         fragment_elem = {
-            'image': fragment.img,
-            'feature': fragment.feature
+            'image': fragment.image,
+            'feature': fragment.features
         }
         fragment_id = len(self.fragments)
         self.fragments[fragment_id] = fragment_elem
@@ -137,7 +137,7 @@ class BigQueryDB:
     def get_db_size(self):
         return len(self.fragments)
 
-    def get_image_by_id(self, fragment_id: int):
+    def get_fragment_image_by_id(self, fragment_id: int):
         fragment = self.fragments[fragment_id]
         return fragment['image']
 
