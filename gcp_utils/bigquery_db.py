@@ -142,6 +142,10 @@ class BigQueryDB:
         similar_fragment_id = self.tree.get_nns_by_vector(fragment_feature, 1)[0]
         return similar_fragment_id
 
+    def find_k_similar_fragments(self, fragment_feature, k):
+        similar_fragment_ids = self.tree.get_nns_by_vector(fragment_feature, k)
+        return [self.get_fragment_by_id(fr_id) for fr_id in similar_fragment_ids]
+
     @staticmethod
     def compress_nparr_to_bytes(nparr):
         # PNG-стиснення

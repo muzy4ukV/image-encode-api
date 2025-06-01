@@ -1,6 +1,5 @@
 import cv2
 import os
-import lzma
 from typing import List
 
 import numpy as np
@@ -137,7 +136,7 @@ class Encoder:
 
         print(f'Encoded data size: {len(encoded_bytes)}')
         print(f'Reused fragments count: {reused_fragments}')
-        print(f'Reuse ratio: {reused_fragments / len(encoded_fragment_info) * 100:.2f}%')
+        print(f'Reuse ratio: {reused_fragments / len(fragment_matches) * 100:.2f}%')
 
         return encoded_bytes
 
@@ -243,12 +242,11 @@ class Encoder:
 
         # Підготовка словника фрагментів
         fragment_dict = {}  # {(y, x): feature}
-        #deleted_fragments = [fragments.pop(198), fragments.pop(199), fragments.pop(200), fragments.pop(201)]
 
         for fragment in fragments:
             x, y = int(fragment.x), int(fragment.y)
             h, w, _ = fragment.image.shape
-            fragment_dict[(y, x)] = fragment.features
+            fragment_dict[(y, x)] = (fragment.features, fragment.image)
 
             reconstructed_image[y:y + h, x:x + w] = fragment.image
             mask[y:y + h, x:x + w] = True
@@ -267,7 +265,9 @@ class Encoder:
         if restore_image:
             # KD-дерево по координатах заповнених фрагментів
             fragments_coords = np.array(list(fragment_dict.keys()))
-            fragments_features = np.array(list(fragment_dict.values()))
+            fragments_features = np.array([v[0] for v in fragment_dict.values()])
+            fragments_images = np.array([v[1] for v in fragment_dict.values()])
+
             tree = KDTree(fragments_coords)
 
             for i, (y, x) in enumerate(empty_fragments):
@@ -283,20 +283,38 @@ class Encoder:
                 dists, idxs = tree.query((y, x), k=num_neighbors)
                 neighbor_coords = fragments_coords[idxs]
                 nearest_features = fragments_features[idxs]
+                neighbor_fr_images = fragments_images[idxs]
 
                 print(f"Empty at ({y}, {x}), neighbors at {neighbor_coords.tolist()}")
 
                 predicted_feature = np.mean(nearest_features, axis=0)
-                restored_id = self.db.find_similar_fragment_id(predicted_feature)
-                restored_fragment = self.db.get_fragment_by_id(restored_id)
+                candidates = self.db.find_k_similar_fragments(predicted_feature, k=10)
+                best_candidate = candidates[0]
+                best_score = 0
 
-                #print("ssim", self.get_ssim(deleted_fragments[i].image, restored_fragment['image']))
+                for candidate in candidates:
+                    scores = [
+                        self.get_ssim_for_fragments(candidate['image'], neighbor_fragment)
+                        for neighbor_fragment in neighbor_fr_images
+                    ]
+                    if scores:
+                        avg_ssim = np.mean(scores)
+                        if avg_ssim > best_score:
+                            best_score = avg_ssim
+                            best_candidate = candidate
 
-                reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = restored_fragment['image']
-
-        reconstructed_image = self.blend_fragments(fragments, reconstructed_image, image_shape)
+                reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = best_candidate['image']
+        #reconstructed_image = self.blend_fragments(fragments, reconstructed_image, image_shape)
 
         return reconstructed_image
+
+    @staticmethod
+    def get_ssim_for_fragments(img1: np.ndarray, img2: np.ndarray) -> float:
+        img1 = img1.astype(np.float32) / 255.0
+        img2 = img2.astype(np.float32) / 255.0
+
+        return ssim_metric(img1, img2, channel_axis=2, win_size=3, data_range=1.0)
+
 
     def blend_fragments(self, fragments: List[Fragment], image: np.ndarray, img_shape: tuple) -> np.ndarray:
         height, width = img_shape
