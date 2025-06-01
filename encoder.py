@@ -131,7 +131,7 @@ class Encoder:
         # Convert encoded_fragment_info to bytes and return
         encoded_bytes = np.array(encoded_fragment_info, dtype=np.uint64).tobytes()
 
-        #Update fragment tree
+        # Update fragment tree
         self.db.build_tree()
 
         print(f'Encoded data size: {len(encoded_bytes)}')
@@ -233,78 +233,31 @@ class Encoder:
 
         return fragments
 
-    def reconstruct_image(self, fragments: List[Fragment], image_shape: tuple, restore_image: bool) -> np.array:
-        height = image_shape[0] - (image_shape[0] % self.kernel_size)
-        width = image_shape[1] - (image_shape[1] % self.kernel_size)
-
+    def reconstruct_image(self, fragments: List[Fragment], image_shape: tuple,
+                          should_restore_image: bool) -> np.ndarray:
+        """Reconstructs an image from fragments."""
+        height, width = self._adjust_image_dimensions(image_shape)
         reconstructed_image = np.zeros((height, width, 3), dtype=np.uint8)
         mask = np.zeros((height, width), dtype=bool)
 
-        # Підготовка словника фрагментів
-        fragment_dict = {}  # {(y, x): feature}
+        # Prepare fragment dictionary and blend initial fragments into the image
+        fragment_dict = self._populate_fragment_dict(fragments, reconstructed_image, mask)
 
-        for fragment in fragments:
-            x, y = int(fragment.x), int(fragment.y)
-            h, w, _ = fragment.image.shape
-            fragment_dict[(y, x)] = (fragment.features, fragment.image)
-
-            reconstructed_image[y:y + h, x:x + w] = fragment.image
-            mask[y:y + h, x:x + w] = True
-
-        # Координати порожніх фрагментів (верхній лівий кут)
-        empty_fragments = [
-            (y, x)
-            for y in range(0, height - self.kernel_size + 1, self.kernel_size)
-            for x in range(0, width - self.kernel_size + 1, self.kernel_size)
-            if not mask[y:y + self.kernel_size, x:x + self.kernel_size].any()
-        ]
+        # Calculate coordinates of empty fragments
+        empty_fragments = self._calculate_empty_fragments(mask, height, width)
 
         if not empty_fragments:
             return reconstructed_image
 
-        if restore_image:
-            # KD-дерево по координатах заповнених фрагментів
-            fragments_coords = np.array(list(fragment_dict.keys()))
-            fragments_features = np.array([v[0] for v in fragment_dict.values()])
-            fragments_images = np.array([v[1] for v in fragment_dict.values()])
-
+        if should_restore_image:
+            fragments_coords, fragments_features, fragments_images = self._prepare_kdtree_data(fragment_dict)
             tree = KDTree(fragments_coords)
 
-            for i, (y, x) in enumerate(empty_fragments):
-                # Перевірка чи фрагмент на краю
-                is_edge = (
-                        x == 0 or y == 0 or
-                        x + self.kernel_size >= width or
-                        y + self.kernel_size >= height
+            for y, x in empty_fragments:
+                self._process_empty_fragment(
+                    y, x, height, width, fragments_coords, fragments_features, fragments_images, tree,
+                    reconstructed_image
                 )
-                num_neighbors = 5 if is_edge else 8
-
-                # Пошук найближчих сусідів
-                dists, idxs = tree.query((y, x), k=num_neighbors)
-                neighbor_coords = fragments_coords[idxs]
-                nearest_features = fragments_features[idxs]
-                neighbor_fr_images = fragments_images[idxs]
-
-                print(f"Empty at ({y}, {x}), neighbors at {neighbor_coords.tolist()}")
-
-                predicted_feature = np.mean(nearest_features, axis=0)
-                candidates = self.db.find_k_similar_fragments(predicted_feature, k=10)
-                best_candidate = candidates[0]
-                best_score = 0
-
-                for candidate in candidates:
-                    scores = [
-                        self.get_ssim_for_fragments(candidate['image'], neighbor_fragment)
-                        for neighbor_fragment in neighbor_fr_images
-                    ]
-                    if scores:
-                        avg_ssim = np.mean(scores)
-                        if avg_ssim > best_score:
-                            best_score = avg_ssim
-                            best_candidate = candidate
-
-                reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = best_candidate['image']
-        #reconstructed_image = self.blend_fragments(fragments, reconstructed_image, image_shape)
 
         return reconstructed_image
 
@@ -315,6 +268,74 @@ class Encoder:
 
         return ssim_metric(img1, img2, channel_axis=2, win_size=3, data_range=1.0)
 
+    # Helper Functions
+    def _adjust_image_dimensions(self, image_shape: tuple) -> tuple:
+        height = image_shape[0] - (image_shape[0] % self.kernel_size)
+        width = image_shape[1] - (image_shape[1] % self.kernel_size)
+        return height, width
+
+    def _populate_fragment_dict(self, fragments: List[Fragment], reconstructed_image: np.ndarray,
+                                mask: np.ndarray) -> dict:
+        fragment_dict = {}
+        for fragment in fragments:
+            x, y = int(fragment.x), int(fragment.y)
+            frag_height, frag_width, _ = fragment.image.shape
+            reconstructed_image[y:y + frag_height, x:x + frag_width] = fragment.image
+            mask[y:y + frag_height, x:x + frag_width] = True
+            fragment_dict[(y, x)] = (fragment.features, fragment.image)
+        return fragment_dict
+
+    def _calculate_empty_fragments(self, mask: np.ndarray, height: int, width: int) -> list:
+        return [
+            (y, x)
+            for y in range(0, height - self.kernel_size + 1, self.kernel_size)
+            for x in range(0, width - self.kernel_size + 1, self.kernel_size)
+            if not mask[y:y + self.kernel_size, x:x + self.kernel_size].any()
+        ]
+
+    def _prepare_kdtree_data(self, fragment_dict: dict) -> tuple:
+        fragments_coords = np.array(list(fragment_dict.keys()))
+        fragments_features = np.array([v[0] for v in fragment_dict.values()])
+        fragments_images = np.array([v[1] for v in fragment_dict.values()])
+        return fragments_coords, fragments_features, fragments_images
+
+    def _process_empty_fragment(
+            self, y: int, x: int, height: int, width: int, fragments_coords: np.ndarray,
+            fragments_features: np.ndarray, fragments_images: np.ndarray, tree: KDTree, reconstructed_image: np.ndarray
+    ):
+        NUM_NEIGHBORS_EDGE = 5
+        NUM_NEIGHBORS_INTERNAL = 8
+
+        is_edge = (x == 0 or y == 0 or x + self.kernel_size >= width or y + self.kernel_size >= height)
+        num_neighbors = NUM_NEIGHBORS_EDGE if is_edge else NUM_NEIGHBORS_INTERNAL
+
+        # Find nearest neighbors
+        dists, idxs = tree.query((y, x), k=num_neighbors)
+        neighbor_features = fragments_features[idxs]
+        neighbor_images = fragments_images[idxs]
+
+        # Predict features for the missing fragment
+        predicted_feature = np.mean(neighbor_features, axis=0)
+        candidates = self.db.find_k_similar_fragments(predicted_feature, k=10)
+        best_candidate, best_score = self._find_best_candidate(candidates, neighbor_images)
+
+        # Fill the fragment
+        reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = best_candidate['image']
+
+    def _find_best_candidate(self, candidates: list, neighbor_images: np.ndarray) -> tuple:
+        best_candidate = candidates[0]
+        best_score = 0
+        for candidate in candidates:
+            scores = [
+                self.get_ssim_for_fragments(candidate['image'], neighbor_image)
+                for neighbor_image in neighbor_images
+            ]
+            if scores:
+                avg_ssim = np.mean(scores)
+                if avg_ssim > best_score:
+                    best_score = avg_ssim
+                    best_candidate = candidate
+        return best_candidate, best_score
 
     def blend_fragments(self, fragments: List[Fragment], image: np.ndarray, img_shape: tuple) -> np.ndarray:
         height, width = img_shape
