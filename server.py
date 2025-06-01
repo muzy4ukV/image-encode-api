@@ -130,6 +130,7 @@ def get_image_size(
 async def decode_image(
         compressed_img: UploadFile = File(...),
         img_size: ImageSize = Depends(get_image_size),
+        restore_image: bool = Form(False),
         encoder: Encoder = Depends(get_encoder)
 ):
     try:
@@ -137,7 +138,8 @@ async def decode_image(
         compressed_img = await compressed_img.read()
 
         # Декодуємо отримані дані
-        decoded_image = encoder.decode(compressed_img, (img_size.height, img_size.width))
+        decoded_image = encoder.decode(compressed_img, (img_size.height, img_size.width),
+                                       restore_image=restore_image)
 
         # Конвертуємо отримане зображення в формат, який можна відправити як відповідь
         decoded_image = cv2.cvtColor(decoded_image, cv2.COLOR_RGB2BGR)

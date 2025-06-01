@@ -131,19 +131,20 @@ class Encoder:
 
         # Convert encoded_fragment_info to bytes and return
         encoded_bytes = np.array(encoded_fragment_info, dtype=np.uint64).tobytes()
-        compressed_output = lzma.compress(encoded_bytes)
 
-        print(f'Encoded data size: {len(compressed_output)}')
+        #Update fragment tree
+        self.db.build_tree()
+
+        print(f'Encoded data size: {len(encoded_bytes)}')
         print(f'Reused fragments count: {reused_fragments}')
-        print(f'Reuse ratio: {reused_fragments / len(fragment_matches) * 100:.2f}%')
+        print(f'Reuse ratio: {reused_fragments / len(encoded_fragment_info) * 100:.2f}%')
 
-        return compressed_output
+        return encoded_bytes
 
     @timing("Decoding time")
-    def decode(self, compressed_data: bytes, image_shape: tuple) -> np.array:
+    def decode(self, compressed_data: bytes, image_shape: tuple, restore_image: bool = False) -> np.array:
         # Decompress the encoded fragment info
-        decoded_bytes = lzma.decompress(compressed_data)
-        decoded_array = np.frombuffer(decoded_bytes, dtype=np.uint64)
+        decoded_array = np.frombuffer(compressed_data, dtype=np.uint64)
 
         # Parse fragment info into (fragment_id, x, y) tuples
         decoded_fragments = [
@@ -158,7 +159,7 @@ class Encoder:
             fragments.append(Fragment(img=fragment_image, feature=fragment['feature'], x=x, y=y))
 
         # Reconstruct the original image from fragments
-        reconstructed_image = self.reconstruct_image(fragments, image_shape)
+        reconstructed_image = self.reconstruct_image(fragments, image_shape, restore_image)
         return reconstructed_image
 
     @tf.function
@@ -233,7 +234,7 @@ class Encoder:
 
         return fragments
 
-    def reconstruct_image(self, fragments: List[Fragment], image_shape: tuple) -> np.array:
+    def reconstruct_image(self, fragments: List[Fragment], image_shape: tuple, restore_image: bool) -> np.array:
         height = image_shape[0] - (image_shape[0] % self.kernel_size)
         width = image_shape[1] - (image_shape[1] % self.kernel_size)
 
@@ -242,7 +243,7 @@ class Encoder:
 
         # Підготовка словника фрагментів
         fragment_dict = {}  # {(y, x): feature}
-        deleted_fragments = [fragments.pop(198), fragments.pop(199), fragments.pop(200), fragments.pop(201)]
+        #deleted_fragments = [fragments.pop(198), fragments.pop(199), fragments.pop(200), fragments.pop(201)]
 
         for fragment in fragments:
             x, y = int(fragment.x), int(fragment.y)
@@ -263,37 +264,37 @@ class Encoder:
         if not empty_fragments:
             return reconstructed_image
 
-        # KD-дерево по координатах заповнених фрагментів
-        fragments_coords = np.array(list(fragment_dict.keys()))
-        fragments_features = np.array(list(fragment_dict.values()))
-        tree = KDTree(fragments_coords)
+        if restore_image:
+            # KD-дерево по координатах заповнених фрагментів
+            fragments_coords = np.array(list(fragment_dict.keys()))
+            fragments_features = np.array(list(fragment_dict.values()))
+            tree = KDTree(fragments_coords)
 
-        for i, (y, x) in enumerate(empty_fragments):
-            # Перевірка чи фрагмент на краю
-            is_edge = (
-                    x == 0 or y == 0 or
-                    x + self.kernel_size >= width or
-                    y + self.kernel_size >= height
-            )
-            num_neighbors = 5 if is_edge else 8
+            for i, (y, x) in enumerate(empty_fragments):
+                # Перевірка чи фрагмент на краю
+                is_edge = (
+                        x == 0 or y == 0 or
+                        x + self.kernel_size >= width or
+                        y + self.kernel_size >= height
+                )
+                num_neighbors = 5 if is_edge else 8
 
-            # Пошук найближчих сусідів
-            dists, idxs = tree.query((y, x), k=num_neighbors)
-            neighbor_coords = fragments_coords[idxs]
-            nearest_features = fragments_features[idxs]
+                # Пошук найближчих сусідів
+                dists, idxs = tree.query((y, x), k=num_neighbors)
+                neighbor_coords = fragments_coords[idxs]
+                nearest_features = fragments_features[idxs]
 
-            print(f"Empty at ({y}, {x}), neighbors at {neighbor_coords.tolist()}")
+                print(f"Empty at ({y}, {x}), neighbors at {neighbor_coords.tolist()}")
 
-            predicted_feature = np.mean(nearest_features, axis=0)
-            restored_id = self.db.find_similar_fragment_id(predicted_feature)
-            restored_fragment = self.db.get_fragment_by_id(restored_id)
+                predicted_feature = np.mean(nearest_features, axis=0)
+                restored_id = self.db.find_similar_fragment_id(predicted_feature)
+                restored_fragment = self.db.get_fragment_by_id(restored_id)
 
-            print("ssim", self.get_ssim(deleted_fragments[i].image, restored_fragment['image']))
+                #print("ssim", self.get_ssim(deleted_fragments[i].image, restored_fragment['image']))
 
-            reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = restored_fragment['image']
+                reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = restored_fragment['image']
 
-        if self.ssim_threshold < 0.5:
-            reconstructed_image = self.blend_fragments(fragments, reconstructed_image, image_shape)
+        reconstructed_image = self.blend_fragments(fragments, reconstructed_image, image_shape)
 
         return reconstructed_image
 

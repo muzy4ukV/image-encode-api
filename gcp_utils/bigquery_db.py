@@ -131,7 +131,6 @@ class BigQueryDB:
                 self.buffer_fragments_ids = []
             except Exception as e:
                 print(f"Error occurred while adding fragments to BigQuery: {e}")
-            self.build_tree()
 
     def get_db_size(self):
         return len(self.fragments)
