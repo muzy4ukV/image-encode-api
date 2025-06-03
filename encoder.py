@@ -129,7 +129,7 @@ class Encoder:
             encoded_fragment_info.extend([fragment_id, x, y])
 
         # Convert encoded_fragment_info to bytes and return
-        encoded_bytes = np.array(encoded_fragment_info, dtype=np.uint64).tobytes()
+        encoded_bytes = np.array(encoded_fragment_info, dtype=np.uint32).tobytes()
 
         # Update fragment tree
         self.db.build_tree()
@@ -143,7 +143,7 @@ class Encoder:
     @timing("Decoding time")
     def decode(self, compressed_data: bytes, image_shape: tuple, restore_image: bool = False) -> np.array:
         # Decompress the encoded fragment info
-        decoded_array = np.frombuffer(compressed_data, dtype=np.uint64)
+        decoded_array = np.frombuffer(compressed_data, dtype=np.uint32)
 
         # Parse fragment info into (fragment_id, x, y) tuples
         decoded_fragments = [
