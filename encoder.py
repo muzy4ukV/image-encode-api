@@ -46,7 +46,7 @@ class Encoder:
 
             print(f'Fragments adding time: {time() - start_time}')
 
-            if len(self.db.fragments) >= checkpoints[check_index] and self.db_type == 'file':
+            if len(self.db.storage) >= checkpoints[check_index] and self.db_type == 'file':
                 self.db.save_results(path_to_save=f"fragments_base/frag_count_{checkpoints[check_index]}.npy")
                 check_index += 1
 
@@ -58,7 +58,7 @@ class Encoder:
         if not self.db.is_empty():
             for fragment in prep_fragments:
                 similar_fragment_id = self.db.find_similar_fragment_id(fragment.features)
-                similar_fragment_img = self.db.get_fragment_by_id(similar_fragment_id)['image']
+                similar_fragment_img = self.db.get_fragment_by_id(similar_fragment_id).image
                 similarity = self.get_ssim(fragment.image, similar_fragment_img)
 
                 if similarity < self.ssim_threshold:
@@ -93,7 +93,7 @@ class Encoder:
                 continue
 
             matched_fragment_id = self.db.find_similar_fragment_id(fragment.features)
-            matched_fragment_image = self.db.get_fragment_by_id(matched_fragment_id)['image']
+            matched_fragment_image = self.db.get_fragment_by_id(matched_fragment_id).image
             similarity_score = self.get_ssim(fragment.image, matched_fragment_image)
 
             if similarity_score > self.ssim_threshold:
@@ -154,8 +154,8 @@ class Encoder:
         fragments = []
         for fragment_id, x, y in decoded_fragments:
             fragment = self.db.get_fragment_by_id(fragment_id)
-            fragment_image = cv2.resize(fragment['image'], (self.kernel_size, self.kernel_size))
-            fragments.append(Fragment(img=fragment_image, feature=fragment['feature'], x=x, y=y))
+            fragment.x, fragment.y = x, y
+            fragments.append(fragment)
 
         # Reconstruct the original image from fragments
         reconstructed_image = self.reconstruct_image(fragments, image_shape, restore_image)
@@ -192,7 +192,7 @@ class Encoder:
                 prepared_fragments.append(
                     Fragment(
                         img=original_fragment.image,
-                        feature=features,
+                        features=features,
                         x=original_fragment.x,
                         y=original_fragment.y
                     )
@@ -320,14 +320,14 @@ class Encoder:
         best_candidate, best_score = self._find_best_candidate(candidates, neighbor_images)
 
         # Fill the fragment
-        reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = best_candidate['image']
+        reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = best_candidate.image
 
     def _find_best_candidate(self, candidates: list, neighbor_images: np.ndarray) -> tuple:
         best_candidate = candidates[0]
         best_score = 0
         for candidate in candidates:
             scores = [
-                self.get_ssim_for_fragments(candidate['image'], neighbor_image)
+                self.get_ssim_for_fragments(candidate.image, neighbor_image)
                 for neighbor_image in neighbor_images
             ]
             if scores:
