@@ -16,10 +16,10 @@ from decorators import timing
 
 class Encoder:
     def __init__(self):
-        self.ssim_threshold = 0.8
+        self.ssim_threshold = 0.87
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
-        self.kernel_size = 16
-        self.step_size = 8
+        self.kernel_size = 160
+        self.step_size = 160
         self.db = BigQueryDB()
 
     def fill_db(self, dir_path: str):
@@ -339,34 +339,54 @@ class Encoder:
 
     def blend_fragments(self, fragments: List[Tuple[int, int]], image: np.ndarray, img_shape: tuple) -> np.ndarray:
         height, width = img_shape
-        edge_width = 2
         size = self.kernel_size
+        edge_width = max(1, size // 10)
+        blur_kernel = self.get_optimal_blur_kernel(size, fraction=0.5)
+        blur_sigma = 2.0
 
         for y, x in fragments:
-            y_start = y - edge_width if y - edge_width >= 0 else y
-            y_end = y + size + edge_width if y + size + edge_width < height else y + size
-            x_start = x - edge_width if x - edge_width >= 0 else x
-            x_end = x + size + edge_width if x + size + edge_width < width else x + size
-            # Витягуємо фрагмент
+            y_start = max(0, y - edge_width)
+            y_end = min(height, y + size + edge_width)
+            x_start = max(0, x - edge_width)
+            x_end = min(width, x + size + edge_width)
+
             fragment = image[y_start:y_end, x_start:x_end].copy()
 
-            # Створюємо маску країв
-            mask = np.zeros_like(fragment)
-            mask[:edge_width, :] = 1  # верх
-            mask[-edge_width:, :] = 1  # низ
-            mask[:, :edge_width] = 1  # ліво
-            mask[:, -edge_width:] = 1  # право
+            # Градієнтна маска для згладжування країв
+            alpha = self.create_gradient_mask(fragment.shape[0], fragment.shape[1], edge_width)
 
-            # Блюримо весь фрагмент
-            blurred = cv2.GaussianBlur(fragment, (3, 3), 0)
+            # Розмитий фрагмент
+            blurred = cv2.GaussianBlur(fragment, blur_kernel, blur_sigma)
 
-            # Змішуємо: всередину залишаємо оригінал, краї — розмиті
-            result = np.where(mask == 1, blurred, fragment)
+            # Плавне змішування розмитого і оригінального фрагмента
+            blended = (fragment * alpha + blurred * (1 - alpha)).astype(np.uint8)
 
-            # Записуємо назад
-            image[y_start:y_end, x_start:x_end] = result
+            # Вставка назад в зображення
+            image[y_start:y_end, x_start:x_end] = blended
 
         return image
+
+    @staticmethod
+    def get_optimal_blur_kernel(fragment_size: int, fraction: float = 0.15):
+        # fraction: яка частка від розміру фрагмента повинна розмиватися (наприклад, 0.1 = 10%)
+        size = max(3, int(fragment_size * fraction))
+        # Перетворюємо на найближче непарне число
+        size = size if size % 2 == 1 else size + 1
+        return (size, size)
+
+    def create_gradient_mask(self, h: int, w: int, edge: int) -> np.ndarray:
+        mask = np.ones((h, w), dtype=np.float32)
+        ramp = np.linspace(0, 1, edge)
+
+        # верх/низ
+        mask[:edge, :] *= ramp[:, None]
+        mask[-edge:, :] *= ramp[::-1][:, None]
+
+        # ліво/право
+        mask[:, :edge] *= ramp[None, :]
+        mask[:, -edge:] *= ramp[::-1][None, :]
+
+        return mask[..., None]  # Для RGB
 
     def set_ssim_threshold(self, threshold: float):
         self.ssim_threshold = threshold

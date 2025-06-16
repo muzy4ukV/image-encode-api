@@ -47,11 +47,11 @@ def get_encoder(request: Request) -> Encoder:
 
 
 def validate_image_file(file: UploadFile = File(...)) -> UploadFile:
-    if not file.filename.endswith((".jpg", ".jpeg", ".png")):
+    if not file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
         raise HTTPException(status_code=400, detail="Invalid file type")
     valid_mime_types = {"image/jpeg", "image/png"}
 
-    if file.content_type not in valid_mime_types:
+    if file.content_type.lower() not in valid_mime_types:
         raise HTTPException(status_code=400, detail="Invalid MIME type")
     return file
 
