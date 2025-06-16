@@ -69,8 +69,7 @@ def validate_and_convert_to_nparray(file_bytes: bytes) -> np.ndarray:
 
 @app.post("/add-fragments/")
 async def add_fragments(file: UploadFile = Depends(validate_image_file),
-                        encoder: Encoder = Depends(get_encoder),
-                        background_tasks: BackgroundTasks = BackgroundTasks):
+                        encoder: Encoder = Depends(get_encoder)):
     file_bytes = await file.read()
 
     # Validate and load image
@@ -79,7 +78,6 @@ async def add_fragments(file: UploadFile = Depends(validate_image_file),
     print("Image received successfully")
 
     adding_status, fragments_count = encoder.add_fragments_from_img(np_image)
-    background_tasks.add_task(encoder.db.build_tree)
     if not fragments_count is None:
         return {
             "status": adding_status,

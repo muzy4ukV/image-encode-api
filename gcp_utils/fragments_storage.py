@@ -1,3 +1,4 @@
+import random
 from typing import Dict, Tuple, Optional
 from fragment import Fragment
 import numpy as np
@@ -26,7 +27,10 @@ class FragmentsStorage:
 
     def get_fragment(self, fragment_id: int) -> Optional[Fragment]:
         """Повертає зображення і вектор ознак за ID"""
-        return self._fragments.get(fragment_id, None)
+        return self._fragments.get(fragment_id)
+
+    def get_random_fragment(self) -> Optional[Fragment]:
+        return random.choice(list(self._fragments.values()))
 
     def get_fragment_as_dict(self, fragment_id: int) -> Optional[Dict]:
         """Повертає фрагмент у вигляді словника з image та feature"""

@@ -1,6 +1,6 @@
 import cv2
 import os
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -72,6 +72,7 @@ class Encoder:
         start_time = time()
         status = self.db.add_fragments(new_fragments)
         print(f"Image fragments adding to bq time: {time() - start_time}")
+        self.db.build_tree()
 
         return status, len(new_fragments)
 
@@ -87,11 +88,6 @@ class Encoder:
         reused_fragments = 0
 
         for fragment in prepared_fragments:
-            if self.db.is_empty():
-                new_fragment_id = self.db.add_fragment(fragment, flag=True)
-                fragment_matches.append((fragment, new_fragment_id, 1))
-                continue
-
             matched_fragment_id = self.db.find_similar_fragment_id(fragment.features)
             matched_fragment_image = self.db.get_fragment_by_id(matched_fragment_id).image
             similarity_score = self.get_ssim(fragment.image, matched_fragment_image)
@@ -259,6 +255,8 @@ class Encoder:
                     reconstructed_image
                 )
 
+            self.blend_fragments(empty_fragments, reconstructed_image, image_shape)
+
         return reconstructed_image
 
     @staticmethod
@@ -321,6 +319,8 @@ class Encoder:
 
         # Fill the fragment
         reconstructed_image[y:y + self.kernel_size, x:x + self.kernel_size] = best_candidate.image
+        best_candidate.x, best_candidate.y = x, y
+        return best_candidate
 
     def _find_best_candidate(self, candidates: list, neighbor_images: np.ndarray) -> tuple:
         best_candidate = candidates[0]
@@ -337,29 +337,34 @@ class Encoder:
                     best_candidate = candidate
         return best_candidate, best_score
 
-    def blend_fragments(self, fragments: List[Fragment], image: np.ndarray, img_shape: tuple) -> np.ndarray:
+    def blend_fragments(self, fragments: List[Tuple[int, int]], image: np.ndarray, img_shape: tuple) -> np.ndarray:
         height, width = img_shape
-        kernel_size = max(self.kernel_size // 2, 5)
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        edge_width = 2
+        size = self.kernel_size
 
-        for fragment in fragments:
-            x, y = int(fragment.x), int(fragment.y)
-            h, w, _ = fragment.image.shape
+        for y, x in fragments:
+            y_start = y - edge_width if y - edge_width >= 0 else y
+            y_end = y + size + edge_width if y + size + edge_width < height else y + size
+            x_start = x - edge_width if x - edge_width >= 0 else x
+            x_end = x + size + edge_width if x + size + edge_width < width else x + size
+            # Витягуємо фрагмент
+            fragment = image[y_start:y_end, x_start:x_end].copy()
 
-            x_start, y_start = max(0, x), max(0, y)
-            x_end, y_end = min(width, x + w), min(height, y + h)
+            # Створюємо маску країв
+            mask = np.zeros_like(fragment)
+            mask[:edge_width, :] = 1  # верх
+            mask[-edge_width:, :] = 1  # низ
+            mask[:, :edge_width] = 1  # ліво
+            mask[:, -edge_width:] = 1  # право
 
-            region_img = image[y_start:y_end, x_start:x_end]
-            region_frag = fragment.image[y_start - y:y_end - y, x_start - x:x_end - x]
+            # Блюримо весь фрагмент
+            blurred = cv2.GaussianBlur(fragment, (3, 3), 0)
 
-            edges = cv2.Canny(region_img, 100, 200)
-            edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+            # Змішуємо: всередину залишаємо оригінал, краї — розмиті
+            result = np.where(mask == 1, blurred, fragment)
 
-            if np.mean(edges) > 0:
-                blended = cv2.addWeighted(region_img, 0.5, region_frag, 0.5, 0)
-                image[y_start:y_end, x_start:x_end] = blended
-            else:
-                image[y_start:y_end, x_start:x_end] = region_frag
+            # Записуємо назад
+            image[y_start:y_end, x_start:x_end] = result
 
         return image
 

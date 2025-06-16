@@ -64,7 +64,7 @@ class BigQueryDB:
         self.build_tree()
 
     def build_tree(self):
-        features_dims = self.storage.get_fragment(2).features.shape[0]
+        features_dims = self.storage.get_random_fragment().features.shape[0]
         self.tree = AnnoyIndex(features_dims, 'euclidean')
         for i, fragment in self.storage.items():
             self.tree.add_item(i, fragment.features)
