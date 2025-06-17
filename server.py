@@ -1,6 +1,6 @@
 import os
 import uvicorn
-from fastapi import UploadFile, File, Depends, HTTPException, Form, Request, BackgroundTasks
+from fastapi import UploadFile, File, Depends, HTTPException, Form, Request, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
 from fastapi import FastAPI
 import io
@@ -15,7 +15,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from encoder import Encoder
 from typing import List
 import traceback
-
 
 
 @asynccontextmanager
@@ -69,8 +68,8 @@ def validate_and_convert_to_nparray(file_bytes: bytes) -> np.ndarray:
 
 @app.post("/add-fragments/")
 async def add_fragments(
-    files: List[UploadFile] = File(...),
-    encoder: Encoder = Depends(get_encoder)
+        files: List[UploadFile] = File(...),
+        encoder: Encoder = Depends(get_encoder)
 ):
     if not 1 <= len(files) <= 5:
         raise HTTPException(status_code=400, detail="You must upload between 1 and 5 images.")
@@ -239,9 +238,23 @@ async def get_ssim_metric(
         "ssim": ssim_value
     }
 
-@app.get("/get-fragments-base/")
-async def get_fragments_base(encoder: Encoder = Depends(get_encoder)):
-    signed_url = encoder.get_signed_url()
+
+@app.get("/create-fragments-base/")
+async def create_fragments_base(encoder: Encoder = Depends(get_encoder)):
+    base_name = encoder.db.upload_new_fragments_base()
+    return {"base_name": base_name}
+
+
+@app.get("/download-fragments-base/")
+async def download_fragments_base(
+        fragments_base_name: str = Query(..., description="Назва бази в GCS"),
+        encoder: Encoder = Depends(get_encoder)
+):
+    try:
+        signed_url = encoder.db.get_fragments_signed_url(fragments_base_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Base with name '{fragments_base_name}' does not exist")
+
     return {"url": signed_url}
 
 

@@ -37,16 +37,18 @@ class GCSBucketUtils:
         print(f"Fragments snapshot uploaded to GCS as {object_name}")
         return object_name
 
-
-    def get_signed_url(self, object_name: str, expiration_minutes: int = 30) -> str:
+    def get_signed_url(self, object_name: str, expiration_minutes: int = 15) -> str:
         """
         Generates a signed URL for a GCS object for direct client download.
-
-        :param object_name: The name of the object in the bucket (e.g., 'fragments.npy')
-        :param expiration_minutes: How long the link should remain valid
-        :return: A signed URL string
+        Checks if the object exists before generating the link.
         """
         blob = self.bucket.blob(object_name)
+
+        # 🔍 Перевірка, чи файл існує в бакеті
+        if not blob.exists():
+            raise FileNotFoundError(f"Object '{object_name}' does not exist in bucket '{self.bucket_name}'.")
+
+        # ✅ Генерація signed URL
         url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(minutes=expiration_minutes),

@@ -22,9 +22,6 @@ class Encoder:
         self.step_size = 160
         self.db = BigQueryDB()
 
-    def get_signed_url(self):
-        return self.db.get_fragments_base_url()
-
     def fill_db(self, dir_path: str):
         checkpoints = [20000, 50000, 100000, 150000, 200000]
         check_index = 0
@@ -396,8 +393,13 @@ class Encoder:
     def get_ssim(self, original_img: np.array, decoded_img: np.array) -> float:
         """
         Computes the Structural Similarity Index (SSIM) between two images.
+        If shapes don't match, original image is resized to match decoded.
         """
-        return ssim_metric(original_img, decoded_img, multichannel=True, win_size=7, channel_axis=2)
+        if original_img.shape != decoded_img.shape:
+            print(f"[INFO] Resizing original image from {original_img.shape} to {decoded_img.shape}")
+            original_img = cv2.resize(original_img, (decoded_img.shape[1], decoded_img.shape[0]))
+
+        return ssim_metric(original_img, decoded_img, win_size=7, channel_axis=2)
 
     def is_overlapping(self, fragment1, fragment2):
         x1, y1, w1, h1 = fragment1[1], fragment1[2], self.kernel_size, self.kernel_size
