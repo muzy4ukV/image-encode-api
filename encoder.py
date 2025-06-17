@@ -263,7 +263,7 @@ class Encoder:
         img1 = img1.astype(np.float32) / 255.0
         img2 = img2.astype(np.float32) / 255.0
 
-        return ssim_metric(img1, img2, channel_axis=2, win_size=3, data_range=1.0)
+        return ssim_metric(img1, img2, channel_axis=2, win_size=7, data_range=1.0)
 
     # Helper Functions
     def _adjust_image_dimensions(self, image_shape: tuple) -> tuple:
@@ -390,13 +390,27 @@ class Encoder:
     def set_ssim_threshold(self, threshold: float):
         self.ssim_threshold = threshold
 
-    def get_ssim(self, original_img: np.array, decoded_img: np.array) -> float:
+    def get_ssim(self, original_img: np.ndarray, decoded_img: np.ndarray) -> float:
         """
-        Computes the Structural Similarity Index (SSIM) between two images.
-        If shapes don't match, original image is resized to match decoded.
+        Computes SSIM between two images. Resizes only if images are larger than 1024x1024.
+        Ensures they match in size before comparison.
         """
+        target_size = (1024, 1024)
+
+        def resize_if_larger(img: np.ndarray, max_size: tuple[int, int]) -> np.ndarray:
+            h, w = img.shape[:2]
+            max_h, max_w = max_size
+            if h > max_h or w > max_w:
+                return cv2.resize(img, (max_w, max_h))
+            return img
+
+        # Застосовуємо масштабування лише якщо зображення великі
+        original_img = resize_if_larger(original_img, target_size)
+        decoded_img = resize_if_larger(decoded_img, target_size)
+
+        # Вирівнюємо розмір, якщо все ще не збігається
         if original_img.shape != decoded_img.shape:
-            print(f"[INFO] Resizing original image from {original_img.shape} to {decoded_img.shape}")
+            print(f"[INFO] Resizing original to match decoded: {decoded_img.shape}")
             original_img = cv2.resize(original_img, (decoded_img.shape[1], decoded_img.shape[0]))
 
         return ssim_metric(original_img, decoded_img, win_size=7, channel_axis=2)
