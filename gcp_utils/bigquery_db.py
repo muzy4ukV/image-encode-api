@@ -34,6 +34,7 @@ class BigQueryDB:
         self.storage = FragmentsStorage()
         self.label_generator = None
         self.prepare_fragments()
+        self.bucket_storage = GCSBucketUtils()
         self.buffer_fragments_ids = []
 
     def is_empty(self):
@@ -146,3 +147,7 @@ class BigQueryDB:
         # PNG-стиснення
         _, encoded_png = cv2.imencode('.png', cv2.cvtColor(nparr, cv2.COLOR_RGB2BGR))
         return encoded_png.tobytes()
+
+    def get_fragments_base_url(self):
+        fragments_base_name = self.bucket_storage.add_fragments_to_gcs(self.storage)
+        return self.bucket_storage.get_signed_url(fragments_base_name)

@@ -211,6 +211,12 @@ async def get_ssim_metric(
         "ssim": ssim_value
     }
 
+@app.get("/get-fragments-base/")
+async def get_fragments_base(encoder: Encoder = Depends(get_encoder)):
+    signed_url = encoder.get_signed_url()
+    return {"url": signed_url}
+
+
 @app.get("/health/")
 def health():
     return {"status": "healthy"}

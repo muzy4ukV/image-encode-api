@@ -22,6 +22,9 @@ class Encoder:
         self.step_size = 160
         self.db = BigQueryDB()
 
+    def get_signed_url(self):
+        return self.db.get_fragments_base_url()
+
     def fill_db(self, dir_path: str):
         checkpoints = [20000, 50000, 100000, 150000, 200000]
         check_index = 0
