@@ -145,7 +145,7 @@ class BigQueryDB:
     @staticmethod
     def compress_nparr_to_bytes(nparr) -> bytes:
         # PNG-стиснення
-        _, encoded_png = cv2.imencode('.png', cv2.cvtColor(nparr, cv2.COLOR_RGB2BGR))
+        _, encoded_png = cv2.imencode('.jpg', cv2.cvtColor(nparr, cv2.COLOR_RGB2BGR))
         return encoded_png.tobytes()
 
     def get_fragments_signed_url(self, fragments_base_name: str) -> str:

@@ -339,9 +339,7 @@ class Encoder:
     def blend_fragments(self, fragments: List[Tuple[int, int]], image: np.ndarray, img_shape: tuple) -> np.ndarray:
         height, width = img_shape
         size = self.kernel_size
-        edge_width = max(1, size // 10)
-        blur_kernel = self.get_optimal_blur_kernel(size, fraction=0.5)
-        blur_sigma = 2.0
+        edge_width = max(1, self.kernel_size // 10)
 
         for y, x in fragments:
             y_start = max(0, y - edge_width)
@@ -349,43 +347,42 @@ class Encoder:
             x_start = max(0, x - edge_width)
             x_end = min(width, x + size + edge_width)
 
-            fragment = image[y_start:y_end, x_start:x_end].copy()
+            fragment = image[y_start:y_end, x_start:x_end].copy().astype(np.float32)
 
-            # Градієнтна маска для згладжування країв
-            alpha = self.create_gradient_mask(fragment.shape[0], fragment.shape[1], edge_width)
+            # Блюримо весь фрагмент
+            blurred = cv2.GaussianBlur(fragment, (21, 21), 5.0)
 
-            # Розмитий фрагмент
-            blurred = cv2.GaussianBlur(fragment, blur_kernel, blur_sigma)
+            # === Створюємо градієнтну альфа-маску ===
+            h, w = fragment.shape[:2]
+            alpha = np.ones((h, w), dtype=np.float32)
 
-            # Плавне змішування розмитого і оригінального фрагмента
-            blended = (fragment * alpha + blurred * (1 - alpha)).astype(np.uint8)
+            ramp = np.linspace(0, 1, edge_width)
 
-            # Вставка назад в зображення
-            image[y_start:y_end, x_start:x_end] = blended
+            # верх
+            alpha[:edge_width, :] *= ramp[::-1, None]
+            alpha[edge_width:edge_width*2, :] *= ramp[:, None]
+            # низ
+            alpha[-edge_width:, :] *= ramp[:][:, None]
+            alpha[-edge_width*2:-edge_width:, :] *= ramp[::-1][:, None]
+            # ліво
+            alpha[:, :edge_width] *= ramp[None, ::-1]
+            alpha[:, edge_width:edge_width*2] *= ramp[None, :]
+            # право
+            alpha[:, -edge_width:] *= ramp[:][None, :]
+            alpha[:, -edge_width*2:-edge_width] *= ramp[::-1][None, :]
+
+
+            # Додаємо розмірність для каналу (RGB)
+            alpha = alpha[..., None]
+
+            # === Плавне альфа-змішування ===
+            result = fragment * alpha + blurred * (1 - alpha)
+            result = np.clip(result, 0, 255).astype(np.uint8)
+
+            # Записуємо назад
+            image[y_start:y_end, x_start:x_end] = result
 
         return image
-
-    @staticmethod
-    def get_optimal_blur_kernel(fragment_size: int, fraction: float = 0.15):
-        # fraction: яка частка від розміру фрагмента повинна розмиватися (наприклад, 0.1 = 10%)
-        size = max(3, int(fragment_size * fraction))
-        # Перетворюємо на найближче непарне число
-        size = size if size % 2 == 1 else size + 1
-        return (size, size)
-
-    def create_gradient_mask(self, h: int, w: int, edge: int) -> np.ndarray:
-        mask = np.ones((h, w), dtype=np.float32)
-        ramp = np.linspace(0, 1, edge)
-
-        # верх/низ
-        mask[:edge, :] *= ramp[:, None]
-        mask[-edge:, :] *= ramp[::-1][:, None]
-
-        # ліво/право
-        mask[:, :edge] *= ramp[None, :]
-        mask[:, -edge:] *= ramp[::-1][None, :]
-
-        return mask[..., None]  # Для RGB
 
     def set_ssim_threshold(self, threshold: float):
         self.ssim_threshold = threshold

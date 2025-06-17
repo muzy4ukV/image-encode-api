@@ -168,7 +168,7 @@ async def decode_image(
 
         # Конвертуємо отримане зображення в формат, який можна відправити як відповідь
         decoded_image = cv2.cvtColor(decoded_image, cv2.COLOR_RGB2BGR)
-        _, buffer = cv2.imencode('.png', decoded_image)
+        _, buffer = cv2.imencode('.jpg', decoded_image)
 
         image_bytes = buffer.tobytes()
 
@@ -178,8 +178,8 @@ async def decode_image(
         # Повертаємо як стрімінгову відповідь
         return StreamingResponse(
             image_io,
-            media_type="image/png",
-            headers={"Content-Disposition": "inline; filename=decoded_image.png"}
+            media_type="image/jpg",
+            headers={"Content-Disposition": "inline; filename=decoded_image.jpg"}
         )
 
     except ValueError as ve:
