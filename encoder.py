@@ -75,7 +75,6 @@ class Encoder:
         start_time = time()
         status = self.db.add_fragments(new_fragments)
         print(f"Image fragments adding to bq time: {time() - start_time}")
-        self.db.build_tree()
 
         return status, len(new_fragments)
 

@@ -1,5 +1,4 @@
 import os
-
 import uvicorn
 from fastapi import UploadFile, File, Depends, HTTPException, Form, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -9,13 +8,14 @@ import numpy as np
 import cv2
 from pydantic import BaseModel
 from dotenv import load_dotenv
-
 load_dotenv()
 from contextlib import asynccontextmanager
 import tensorflow as tf
-
 from fastapi.middleware.cors import CORSMiddleware
 from encoder import Encoder
+from typing import List
+import traceback
+
 
 
 @asynccontextmanager
@@ -68,24 +68,52 @@ def validate_and_convert_to_nparray(file_bytes: bytes) -> np.ndarray:
 
 
 @app.post("/add-fragments/")
-async def add_fragments(file: UploadFile = Depends(validate_image_file),
-                        encoder: Encoder = Depends(get_encoder)):
-    file_bytes = await file.read()
+async def add_fragments(
+    files: List[UploadFile] = File(...),
+    encoder: Encoder = Depends(get_encoder)
+):
+    if not 1 <= len(files) <= 5:
+        raise HTTPException(status_code=400, detail="You must upload between 1 and 5 images.")
 
-    # Validate and load image
-    np_image = validate_and_convert_to_nparray(file_bytes)
+    total_fragments_added = 0
+    failed_files = []
 
-    print("Image received successfully")
+    for file in files:
+        try:
+            # Валідація типу
+            validate_image_file(file)
 
-    adding_status, fragments_count = encoder.add_fragments_from_img(np_image)
-    if not fragments_count is None:
-        return {
-            "status": adding_status,
-            "added_fragments_count": fragments_count,
-            "db_fragments_count": encoder.db.get_db_size()
-        }
-    else:
-        raise HTTPException(status_code=500, detail="Failed to add fragments into base")
+            # Зчитування
+            file_bytes = await file.read()
+
+            # Конвертація
+            np_image = validate_and_convert_to_nparray(file_bytes)
+            print(f"Image {file.filename} received successfully")
+
+            # Додавання фрагментів
+            adding_status, fragments_count = encoder.add_fragments_from_img(np_image)
+
+            if fragments_count is None:
+                raise ValueError("Fragment count returned as None")
+
+            total_fragments_added += fragments_count
+
+        except Exception as e:
+            # Логуємо помилку, але не припиняємо цикл
+            print(f"[ERROR] Failed to process {file.filename}: {str(e)}")
+            traceback.print_exc()
+            failed_files.append(file.filename)
+
+    # Якщо було хоч щось успішно — оновлюємо дерево
+    if total_fragments_added > 0:
+        encoder.db.build_tree()
+
+    return {
+        "status": "partial_success" if failed_files else "success",
+        "added_fragments_count": total_fragments_added,
+        "failed_files": failed_files,
+        "db_fragments_count": encoder.db.get_db_size()
+    }
 
 
 @app.post("/encode-image/")

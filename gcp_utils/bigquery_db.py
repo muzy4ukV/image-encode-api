@@ -129,7 +129,7 @@ class BigQueryDB:
                 print(f"Error occurred while adding fragments to BigQuery: {e}")
 
     def get_db_size(self) -> int:
-        return len(self.storage)
+        return self.storage.get_fragments_count()
 
     def get_fragment_by_id(self, fragment_id: int) -> Fragment:
         return self.storage.get_fragment(fragment_id)
