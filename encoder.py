@@ -21,6 +21,7 @@ class Encoder:
         self.kernel_size = 160
         self.step_size = 160
         self.db = BigQueryDB()
+        self.use_cpu = False
 
     def fill_db(self, dir_path: str):
         checkpoints = [20000, 50000, 100000, 150000, 200000]
@@ -157,7 +158,13 @@ class Encoder:
         return reconstructed_image
 
     @tf.function
-    def resize_and_predict(self, images: tf.Tensor) -> tf.Tensor:
+    def resize_and_predict_cpu(self, images: tf.Tensor) -> tf.Tensor:
+        with tf.device('/CPU:0'):
+            resized_images = tf.image.resize(images, [224, 224])
+            return self.model(resized_images)
+
+    @tf.function
+    def resize_and_predict_gpu(self, images: tf.Tensor) -> tf.Tensor:
         with tf.device('/GPU:0'):
             resized_images = tf.image.resize(images, [224, 224])
             return self.model(resized_images)
@@ -179,7 +186,10 @@ class Encoder:
             batch_images = images_tensor[start:end]
 
             # Get features from CNN model
-            batch_features = self.resize_and_predict(batch_images)
+            if self.use_cpu:
+                batch_features = self.resize_and_predict_cpu(batch_images)
+            else:
+                batch_features = self.resize_and_predict_gpu(batch_images)
             batch_features = batch_features.numpy().reshape(batch_features.shape[0], -1)
 
             for i, features in enumerate(batch_features):

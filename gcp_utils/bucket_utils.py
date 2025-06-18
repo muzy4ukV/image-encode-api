@@ -21,7 +21,7 @@ class GCSBucketUtils:
         :param fragments: Словник {int: Fragment}, який потрібно зберегти
         """
         # Генерація назви файлу
-        fragment_count = fragments.get_fragments_count()
+        fragment_count = len(fragments)
         date_str = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
         object_name = f"fragments_{date_str}_{fragment_count}.npy"
 

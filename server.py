@@ -262,6 +262,16 @@ async def download_fragments_base(
 def health():
     return {"status": "healthy"}
 
+@app.post("/set-use-cpu/")
+def set_use_cpu(
+    use_cpu: bool = Query(..., description="Встановити використання CPU замість GPU"),
+    encoder: Encoder = Depends(get_encoder)
+):
+    encoder.use_cpu = use_cpu
+    return {
+        "message": f"CPU usage flag set to {use_cpu}",
+        "use_cpu": encoder.use_cpu
+    }
 
 @app.get("/")
 async def root():

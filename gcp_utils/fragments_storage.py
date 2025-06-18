@@ -2,7 +2,6 @@ import random
 from typing import Dict, Tuple, Optional
 from fragment import Fragment
 import numpy as np
-from random import randint
 
 class FragmentsStorage:
     def __init__(self):
@@ -43,9 +42,6 @@ class FragmentsStorage:
 
     def get_dict(self):
         return self._fragments
-
-    def get_fragments_count(self) -> int:
-        return int(f"{len(self._fragments)}{randint(0, 9)}")
 
     def __len__(self):
         return len(self._fragments)
