@@ -16,7 +16,7 @@ from decorators import timing
 
 class Encoder:
     def __init__(self):
-        self.ssim_threshold = 0.87
+        self.ssim_threshold = 0.9
         self.model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3))
         self.kernel_size = 160
         self.step_size = 160
@@ -389,26 +389,29 @@ class Encoder:
 
     def get_ssim(self, original_img: np.ndarray, decoded_img: np.ndarray) -> float:
         """
-        Computes SSIM between two images. Resizes only if images are larger than 1024x1024.
-        Ensures they match in size before comparison.
+        Computes SSIM between two images.
+        - Якщо зображення більші за 1024x1024 — обрізає їх з лівого верхнього кута
+        - Якщо розміри не збігаються — обрізає original_img до decoded_img з лівого верхнього кута
         """
-        target_size = (1024, 1024)
+        target_size = (1024, 1024)  # (height, width)
 
-        def resize_if_larger(img: np.ndarray, max_size: tuple[int, int]) -> np.ndarray:
+        def crop_to_shape_top_left(img: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+            target_h, target_w = target_shape
             h, w = img.shape[:2]
-            max_h, max_w = max_size
-            if h > max_h or w > max_w:
-                return cv2.resize(img, (max_w, max_h))
-            return img
+            if h < target_h or w < target_w:
+                raise ValueError(f"Cannot crop image of size ({h}, {w}) to ({target_h}, {target_w})")
+            return img[0:target_h, 0:target_w]
 
-        # Застосовуємо масштабування лише якщо зображення великі
-        original_img = resize_if_larger(original_img, target_size)
-        decoded_img = resize_if_larger(decoded_img, target_size)
+        # Обрізаємо обидва зображення до 1024x1024 з лівого верхнього кута, якщо потрібно
+        if original_img.shape[0] > 1024 or original_img.shape[1] > 1024:
+            original_img = crop_to_shape_top_left(original_img, target_size)
+        if decoded_img.shape[0] > 1024 or decoded_img.shape[1] > 1024:
+            decoded_img = crop_to_shape_top_left(decoded_img, target_size)
 
-        # Вирівнюємо розмір, якщо все ще не збігається
+        # Якщо залишилися відмінності — crop original до розміру decoded (також з верхнього лівого кута)
         if original_img.shape != decoded_img.shape:
-            print(f"[INFO] Resizing original to match decoded: {decoded_img.shape}")
-            original_img = cv2.resize(original_img, (decoded_img.shape[1], decoded_img.shape[0]))
+            print(f"[INFO] Cropping original to match decoded: {decoded_img.shape}")
+            original_img = crop_to_shape_top_left(original_img, decoded_img.shape[:2])
 
         return ssim_metric(original_img, decoded_img, win_size=7, channel_axis=2)
 
